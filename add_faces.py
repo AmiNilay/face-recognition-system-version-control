@@ -15,7 +15,7 @@ def capture_face(name):
     """Capture and save face properly"""
     os.makedirs("known_faces", exist_ok=True)
     
-    # Replace spaces with underscores in filename
+
     safe_name = name.replace(" ", "_")
     
     cap = cv2.VideoCapture(0)
@@ -52,7 +52,7 @@ def capture_face(name):
         if key == 32:  # SPACE
             filename = f"known_faces/{safe_name}.jpg"
             
-            # Convert to RGB then back to ensure proper format
+
             rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             
             # Save using PIL to ensure compatibility

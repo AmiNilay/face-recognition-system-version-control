@@ -1,5 +1,3 @@
-"""Utility Functions"""
-
 import os
 import cv2
 import yaml
@@ -31,7 +29,7 @@ def load_config(config_path: str = "config/config.yaml") -> Dict[str, Any]:
     config_path = Path(config_path)
     
     if not config_path.exists():
-        # Create default config
+
         default_config = {
             'camera': {
                 'device': 0,
@@ -57,7 +55,7 @@ def load_config(config_path: str = "config/config.yaml") -> Dict[str, Any]:
             }
         }
         
-        # Save default config
+
         config_path.parent.mkdir(parents=True, exist_ok=True)
         with open(config_path, 'w') as f:
             yaml.dump(default_config, f, default_flow_style=False)
@@ -70,15 +68,15 @@ def load_config(config_path: str = "config/config.yaml") -> Dict[str, Any]:
 def save_image(image: np.ndarray, directory: str = "captured_images", 
                prefix: str = "capture") -> str:
     """Save image to file with timestamp"""
-    # Create directory if not exists
+
     Path(directory).mkdir(parents=True, exist_ok=True)
     
-    # Generate filename with timestamp
+
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"{prefix}_{timestamp}.jpg"
     filepath = os.path.join(directory, filename)
     
-    # Save image
+
     cv2.imwrite(filepath, image)
     
     return filepath

@@ -1,5 +1,3 @@
-"""Face Detection Module"""
-
 import cv2
 import face_recognition
 import numpy as np
@@ -37,7 +35,7 @@ class FaceDetector:
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         faces = self.face_cascade.detectMultiScale(gray, 1.1, 4)
         
-        # Convert to face_recognition format (top, right, bottom, left)
+
         face_locations = []
         for (x, y, w, h) in faces:
             face_locations.append((y, x + w, y + h, x))
@@ -57,14 +55,14 @@ class FaceDetector:
         """Draw rectangle around face with name"""
         top, right, bottom, left = location
         
-        # Determine color
+
         if color is None:
             color = (0, 255, 0) if name != "Unknown" else (0, 0, 255)
         
-        # Draw rectangle
+
         cv2.rectangle(image, (left, top), (right, bottom), color, 2)
         
-        # Draw name label
+
         cv2.rectangle(image, (left, bottom - 35), (right, bottom), color, cv2.FILLED)
         font = cv2.FONT_HERSHEY_DUPLEX
         cv2.putText(image, name, (left + 6, bottom - 6), font, 0.6, (255, 255, 255), 1)

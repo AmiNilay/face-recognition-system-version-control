@@ -1,5 +1,3 @@
-"""Database Management Module"""
-
 import sqlite3
 from datetime import datetime
 from pathlib import Path
@@ -20,7 +18,7 @@ class DatabaseManager:
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         
-        # Create persons table
+
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS persons (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -31,7 +29,7 @@ class DatabaseManager:
             )
         ''')
         
-        # Create recognition_logs table
+
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS recognition_logs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -43,7 +41,7 @@ class DatabaseManager:
             )
         ''')
         
-        # Create unknown_faces table
+
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS unknown_faces (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -69,7 +67,7 @@ class DatabaseManager:
             conn.commit()
             person_id = cursor.lastrowid
         except sqlite3.IntegrityError:
-            # Person already exists
+
             cursor.execute('SELECT id FROM persons WHERE name = ?', (name,))
             person_id = cursor.fetchone()[0]
         finally:
@@ -83,7 +81,7 @@ class DatabaseManager:
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         
-        # Get person ID
+
         cursor.execute('SELECT id FROM persons WHERE name = ?', (person_name,))
         result = cursor.fetchone()
         

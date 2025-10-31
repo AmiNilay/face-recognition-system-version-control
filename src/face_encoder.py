@@ -1,5 +1,3 @@
-"""Face Encoding Module"""
-
 import face_recognition
 import numpy as np
 import pickle
