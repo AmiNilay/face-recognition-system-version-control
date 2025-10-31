@@ -1,0 +1,53 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+*.whl
+
+# Virtual Environment
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Project specific
+data/*.db
+data/*.pkl
+*.pkl
+*.db
+logs/*.log
+captured_images/*.jpg
+captured_images/*.png
+known_faces/*.jpg
+known_faces/*.png
+
+# But keep README files
+!known_faces/README.md
+!captured_images/README.md
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Environment
+.env
+.env.local
+
+# Build files
+*.spec
+build/
+dist/
