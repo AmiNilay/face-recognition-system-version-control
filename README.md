@@ -477,4 +477,3 @@ If this project helped you, please give it a ⭐️!
 
 <p align="center"><b>Made with ❤️ using Python</b></p>
 <p align="center"><a href="#-face-recognition-system">Back to Top ↑</a></p>
-```
