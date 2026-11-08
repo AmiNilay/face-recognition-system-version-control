@@ -1,129 +1,143 @@
+"""
+Standalone Face Enrollment Script
+
+This interactive command-line utility enables users to register new identities
+into the Face Recognition System by capturing a live webcam portrait or reviewing
+existing enrolled portraits.
+
+Timestamps and date records follow Indian Standard Time (IST).
+"""
+
 import os
 import sys
+import re
 import cv2
 import numpy as np
+from PIL import Image
+from src.utils import get_ist_filename_timestamp, format_ist_timestamp
 
-try:
-    import cv2
-except ImportError:
-    print("Installing OpenCV...")
-    import subprocess
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "opencv-python"])
-    import cv2
+def sanitize_name(name: str) -> str:
+    """Sanitize input name to avoid directory traversal or invalid characters."""
+    clean = re.sub(r'[^a-zA-Z0-9_\- ]', '', name.strip())
+    return re.sub(r'\s+', ' ', clean)
 
-def capture_face(name):
-    """Capture and save face properly"""
+def capture_face(name: str):
+    """
+    Open the camera feed, provide an on-screen alignment guide,
+    and save the user's portrait when SPACE is pressed.
+
+    Args:
+        name (str): Person's full name.
+    """
     os.makedirs("known_faces", exist_ok=True)
-    
+    clean_name = sanitize_name(name)
+    safe_filename = clean_name.replace(" ", "_")
 
-    safe_name = name.replace(" ", "_")
-    
     cap = cv2.VideoCapture(0)
-    
     if not cap.isOpened():
-        print("Error: Could not open camera")
+        print("[ERROR] Could not open camera device.")
         return
-    
-    print(f"\n📸 Position your face in the camera for: {name}")
-    print("➡️  Press SPACE to capture")
-    print("➡️  Press ESC to cancel\n")
-    
+
+    print(f"\n[INFO] Position face inside the target box for: {clean_name}")
+    print("[INFO] Press SPACE to capture and save.")
+    print("[INFO] Press ESC to cancel.\n")
+
     while True:
         ret, frame = cap.read()
         if not ret:
-            print("Failed to grab frame")
+            print("[ERROR] Failed to read frame from camera.")
             break
-        
-        cv2.putText(frame, f"Capturing: {name}", (10, 30), 
-                   cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-        cv2.putText(frame, "Press SPACE to save", (10, 60),
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-        
+
+        # Display on-screen instructions
+        cv2.putText(frame, f"Capturing: {clean_name}", (10, 30), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+        cv2.putText(frame, "Press SPACE to save | ESC to cancel", (10, 60),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+
+        # Draw a centered square targeting box for face alignment
         height, width = frame.shape[:2]
         cv2.rectangle(frame, 
-                     (width//2 - 100, height//2 - 100),
-                     (width//2 + 100, height//2 + 100),
-                     (255, 0, 0), 2)
-        
-        cv2.imshow("Add Face - Press SPACE to capture", frame)
-        
-        key = cv2.waitKey(1)
-        
-        if key == 32:  # SPACE
-            filename = f"known_faces/{safe_name}.jpg"
-            
+                      (width // 2 - 110, height // 2 - 110),
+                      (width // 2 + 110, height // 2 + 110),
+                      (255, 0, 0), 2)
 
+        cv2.imshow("Enroll Face - Press SPACE to Capture", frame)
+
+        key = cv2.waitKey(1) & 0xFF
+
+        if key == 32:  # SPACE bar pressed
+            target_path = f"known_faces/{safe_filename}.jpg"
             rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            
-            # Save using PIL to ensure compatibility
-            from PIL import Image
-            img = Image.fromarray(rgb_frame)
-            img.save(filename, 'JPEG', quality=95)
-            
-            print(f"✅ Face saved successfully: {filename}")
-            
-            cv2.putText(frame, "CAPTURED!", (10, 100),
-                       cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 3)
-            cv2.imshow("Add Face - Press SPACE to capture", frame)
-            cv2.waitKey(2000)
+
+            # Crop or save full image using PIL
+            pil_img = Image.fromarray(rgb_frame)
+            pil_img.save(target_path, 'JPEG', quality=95)
+
+            print(f"[OK] Face image saved successfully: {target_path}")
+
+            # Visual confirmation on screen
+            cv2.putText(frame, "SAVED!", (10, 100), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 3)
+            cv2.imshow("Enroll Face - Press SPACE to Capture", frame)
+            cv2.waitKey(1200)
             break
-            
-        elif key == 27:  # ESC
-            print("❌ Cancelled")
+
+        elif key == 27:  # ESC key pressed
+            print("[INFO] Enrollment cancelled by user.")
             break
-    
+
     cap.release()
     cv2.destroyAllWindows()
 
 def main():
-    print("="*50)
-    print("     ADD NEW FACE TO RECOGNITION SYSTEM")
-    print("="*50)
-    
+    """Interactive command-line menu loop."""
+    print("=" * 50)
+    print("       ENROLL FACE INTO RECOGNITION SYSTEM")
+    print(f"            Current IST: {format_ist_timestamp()}")
+    print("=" * 50)
+
     while True:
-        print("\n1. Add new face")
-        print("2. View existing faces")
+        print("\n1. Enroll new face via camera")
+        print("2. List currently enrolled faces")
         print("3. Exit")
-        
-        choice = input("\nEnter choice (1-3): ").strip()
-        
+
+        choice = input("\nEnter selection (1-3): ").strip()
+
         if choice == "1":
-            name = input("Enter person's name: ").strip()
-            
-            if name:
-                safe_name = name.replace(" ", "_")
-                if os.path.exists(f"known_faces/{safe_name}.jpg"):
-                    overwrite = input(f"⚠️  {name} already exists. Overwrite? (y/n): ")
+            raw_name = input("Enter person's name: ").strip()
+            clean_name = sanitize_name(raw_name)
+
+            if clean_name:
+                safe_filename = clean_name.replace(" ", "_")
+                existing_path = f"known_faces/{safe_filename}.jpg"
+
+                if os.path.exists(existing_path):
+                    overwrite = input(f"[WARNING] '{clean_name}' is already enrolled. Overwrite? (y/n): ")
                     if overwrite.lower() != 'y':
                         continue
-                
-                capture_face(name)
+
+                capture_face(clean_name)
             else:
-                print("❌ Name cannot be empty!")
-                
+                print("[ERROR] Name cannot be empty or contain only invalid characters.")
+
         elif choice == "2":
-            print("\n📁 Existing faces in system:")
+            print("\n[DIRECTORY] Enrolled Identities in known_faces/:")
             if os.path.exists("known_faces"):
                 faces = [f.replace('.jpg', '').replace('_', ' ') 
-                        for f in os.listdir("known_faces") if f.endswith('.jpg')]
+                         for f in os.listdir("known_faces") 
+                         if f.lower().endswith(('.jpg', '.jpeg', '.png'))]
                 if faces:
-                    for i, face in enumerate(faces, 1):
+                    for i, face in enumerate(sorted(faces), 1):
                         print(f"  {i}. {face}")
                 else:
-                    print("  No faces found")
+                    print("  (No enrolled faces found)")
             else:
-                print("  No faces directory found")
-                
+                print("  (known_faces directory not found)")
+
         elif choice == "3":
-            print("👋 Goodbye!")
+            print("[EXIT] Exiting enrollment utility.")
             break
         else:
-            print("❌ Invalid choice!")
+            print("[ERROR] Invalid choice. Please enter 1, 2, or 3.")
 
 if __name__ == "__main__":
-    try:
-        print(f"OpenCV version: {cv2.__version__}")
-    except:
-        print("OpenCV not properly installed")
-    
     main()

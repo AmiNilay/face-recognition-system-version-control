@@ -11,10 +11,15 @@ del /q *.spec 2>nul
 
 echo.
 echo Step 2: Creating executable...
+set "ICON_PARAM="
+if exist "icon.ico" (
+    set "ICON_PARAM=--icon=icon.ico"
+)
+
 pyinstaller --name="FaceRecognitionSystem" ^
     --onedir ^
     --windowed ^
-    --icon=icon.ico ^
+    %ICON_PARAM% ^
     --add-data="src;src" ^
     --add-data="gui;gui" ^
     --add-data="config;config" ^

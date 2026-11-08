@@ -1,479 +1,240 @@
-# 🎥 Face Recognition System
+# 🎥 Face Recognition System (2026 Edition)
 
 [![Python Version](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![OpenCV](https://img.shields.io/badge/OpenCV-4.12+-red.svg)](https://opencv.org/)
-![Status](https://img.shields.io/badge/status-active-success.svg)
+[![OpenCV](https://img.shields.io/badge/OpenCV-4.11+-red.svg)](https://opencv.org/)
+[![Status](https://img.shields.io/badge/status-active%20%7C%202026%20modernized-success.svg)](#)
+[![Security Audit](https://img.shields.io/badge/security-audit%20v2.0-orange.svg)](docs/SYSTEM_AUDIT_AND_ROADMAP.md)
 
-[![Project Icon](https://i.ibb.co/QtVfbg7/1761922377176.jpg)](https://ibb.co/QtVfbg7)
-
-A comprehensive real-time face recognition system built with Python, featuring advanced detection algorithms, confidence scoring, recognition history tracking, and a modern GUI interface.
-
-![Face Recognition System](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20Mac-lightgrey)
+A comprehensive, real-time face recognition and attendance management system built with Python, OpenCV, and deep metric learning. Features real-time detection, confidence scoring, tamper-evident audit logs, multi-format image support, a modern dark GUI, and a comprehensive 2026-era security roadmap.
 
 ---
 
 ## ✨ Features
 
-### Core Functionality
+### Core Capabilities
+- 🎥 **Real-time Face Detection** – Instant, low-latency detection using HOG and Haar Cascade algorithms.
+- 🔍 **Deep Metric Recognition** – 128-dimensional biometric embeddings using pretrained deep ResNet architectures.
+- 📊 **Dynamic Confidence Scoring** – Real-time match percentage calculation (0–100%) with color-coded feedback:
+  - 🟢 **Green (70–100%)** – High confidence match.
+  - 🟡 **Orange (50–70%)** – Moderate confidence match.
+  - 🔴 **Red (<50%)** – Low confidence / Unknown face.
+- 👥 **Multi-face Tracking** – Detects and identifies multiple faces simultaneously in high-resolution video streams.
+- 📁 **Universal Image Ingestion** – Supports JPEG, PNG, WebP, BMP, GIF, and TIFF with automated channel harmonization.
 
-- 🎥 **Real-time Face Detection** – Instant detection using HOG algorithm  
-- 🔍 **Face Recognition** – 128-dimensional embeddings for accuracy  
-- 📊 **Confidence Scoring** – Real-time percentage display (0–100%)  
-- 👥 **Multi-face Detection** – Recognizes multiple faces simultaneously  
-- 🎨 **Color-coded Feedback**:
-  - 🟢 **Green (70–100%)** – High confidence  
-  - 🟡 **Orange (50–70%)** – Medium confidence  
-  - 🔴 **Red (<50%)** – Low confidence / Unknown  
+### Advanced Logging & Management
+- 💾 **Recognition History** – Real-time event logging with microsecond timestamps and cooldown deduplication.
+- 📈 **SQLite Database Integration** – Structured relational storage for identities, attendance logs, and unknown sightings.
+- 📤 **Data Export** – 1-click export of attendance and recognition history to standard CSV/Excel format.
+- ⚡ **Optimized Video Pipeline** – Frame-skipping buffer management to conserve CPU cycles (processing every 3rd frame).
 
-### Advanced Features
-
-- 💾 **Recognition History** – Auto logging with timestamps  
-- 📈 **Database Integration** – SQLite storage  
-- 📁 **Multi-format Support** – JPEG, PNG, GIF, TIFF, WebP, BMP  
-- 📤 **Export Functionality** – Export logs to CSV  
-- ⚡ **Performance Optimized** – Processes every 3rd frame  
-- 🔄 **Auto-save** – Configurable cooldown backup  
-- 🎯 **Cooldown System** – Prevents duplicate logging  
-
-### User Interface
-
-- 🖥️ **Dual Mode** – GUI + CLI  
-- 🌙 **Dark Theme** – Professional dark-mode  
-- 📸 **Live Capture** – Add new faces dynamically  
-- 👤 **Face Management** – Add/Remove/View faces  
-- 📊 **Statistics Dashboard** – Real-time analytics  
-- 📅 **History Viewer** – Filtered recognition logs  
-
----
-
-## 🎬 Demo
-
-### GUI Interface
-- Modern dark theme  
-- Real-time video feed  
-- Live confidence display  
-- Easy face management  
-
-### CLI Interface
-- Lightweight performance  
-- Green = recognized, Red = unknown  
-- Keyboard shortcuts for actions  
+### 2026 Security Roadmap & Modernization
+- 🛡️ **Full Security Audit:** Comprehensive vulnerability catalog (CWE-502, presentation attack/anti-spoofing, biometric privacy) detailed in [docs/SYSTEM_AUDIT_AND_ROADMAP.md](docs/SYSTEM_AUDIT_AND_ROADMAP.md).
+- 🔒 **Zero-Cost Modernization:** Eye Aspect Ratio (EAR) blink detection, screen moiré detection, bystander privacy auto-blur, and AES-256 encrypted biometric template storage.
 
 ---
 
 ## 🚀 Quick Installation (Windows)
 
-### Easy Install (Recommended)
+### Option A: Easy Automated Install (Recommended)
 
-**1. Download the project:**
-```bash
-git clone https://github.com/AmiNilay/face-recognition-system-version-control.git
-cd face-recognition-system-version-control
-````
+1. Clone or download the repository:
+   ```bash
+   git clone https://github.com/AmiNilay/face-recognition-system-version-control.git
+   cd face-recognition-system-version-control
+   ```
 
-**2. Run the installer:**
+2. Run the automated installer:
+   ```cmd
+   INSTALL.bat
+   ```
+   *(Creates a Python 3.10 virtual environment configured with system site-packages and installs all required dependencies from `requirements.txt`).*
 
-```batch
-INSTALL.bat
-```
+3. Launch the application:
+   ```cmd
+   # For Modern GUI Mode
+   run_gui.bat
 
-**3. Launch the application:**
-
-```batch
-# For GUI mode
-run_gui.bat
-
-# For CLI mode
-run_cli.bat
-```
-
-✅ That’s it!
+   # For Fast CLI Mode
+   run_cli.bat
+   ```
 
 ---
 
-## 💻 Manual Installation
+### Option B: Manual Installation
 
-### Prerequisites
+#### Prerequisites
+* **Python 3.10+** (Python 3.10 64-bit recommended on Windows)
+* Webcam or USB video capture device
+* 4 GB RAM minimum (8 GB recommended)
 
-* Python 3.10+
-* Windows 10/11 (primary), Linux or macOS
-* Webcam
-* 4GB RAM minimum (8GB recommended)
-
-### Step-by-Step Setup
-
-#### 1. Clone Repository
-
+#### 1. Setup Virtual Environment
 ```bash
-git clone https://github.com/AmiNilay/face-recognition-system-version-control.git
-cd face-recognition-system-version-control
+# Recommended on Windows to inherit pre-compiled dlib wheels:
+python -m venv --system-site-packages .venv
+
+# Activate the virtual environment
+# On Windows Command Prompt / PowerShell:
+.venv\Scripts\activate
+# On Linux / macOS:
+source .venv/bin/activate
 ```
 
-#### 2. Create Virtual Environment
-
-```bash
-python -m venv .venv
-.venv\Scripts\activate  # Windows
-# source .venv/bin/activate  # Linux/Mac
-```
-
-#### 3. Install Dependencies
-
+#### 2. Install Dependencies
 ```bash
 python -m pip install --upgrade pip
-
-pip install opencv-python numpy Pillow pandas PyYAML face-recognition
+pip install -r requirements.txt
 ```
 
-#### 4. Verify Installation
-
-```bash
-python test_imports.py
-```
-
-**Expected Output:**
-
-```
-✅ OpenCV 4.12.0
-✅ NumPy 2.2.6
-✅ Pillow 12.0.0
-✅ Pandas 2.1.3
-✅ PyYAML 6.0.1
-✅ Face Recognition 1.3.0
-✅ All packages installed correctly!
-```
+> **Important Compatibility Note on NumPy:**  
+> `requirements.txt` locks `numpy>=1.24.3,<2.0.0` (such as NumPy 1.26.4). NumPy 2.x introduces binary C-API breaking changes with pre-compiled `dlib` and `face-recognition` C-extensions.
 
 ---
 
-## 📖 Usage
+## 📖 Usage & Operating Modes
 
-### Adding Your First Face
+### 1. Adding Known Faces
 
-#### Method 1: Using Script (Recommended)
+Before running recognition, register at least one known person:
 
-```bash
-python add_faces.py
-```
-
-1. Enter name
-2. Position face
-3. Press **SPACE** to capture
-4. Press **3** to exit
-
-#### Method 2: Manual Addition
-
-* Save a clear photo in `known_faces/PersonName.jpg`
-* Restart app
-
-#### Method 3: During Recognition (GUI)
-
-1. Start camera
-2. Click “📸 Capture Face”
-3. Enter name
+* **Method 1 (GUI):** Run `run_gui.bat`, click **▶ Start Camera**, then click **📸 Capture Face**.
+* **Method 2 (CLI Script):** Run `python add_faces.py`, enter the person's name, position face in frame, and press **SPACE**.
+* **Method 3 (Manual File Drop):** Drop a clear frontal photo into the [`known_faces/`](known_faces/) directory (e.g., `known_faces/John_Doe.jpg`).
 
 ---
 
-### Running Face Recognition
+### 2. Running Face Recognition
 
 #### GUI Mode
-
 ```bash
 run_gui.bat
 # or
 python main.py --gui
 ```
-
-**Controls:**
-
-| Button          | Action            |
-| --------------- | ----------------- |
-| ▶ Start Camera  | Begin recognition |
-| ⏹ Stop Camera   | Stop recognition  |
-| 📸 Capture Face | Add new face      |
-| ➕ Add           | Add from file     |
-| 🗑️ Remove      | Delete face       |
-| 🔄 Refresh      | Update list       |
+* **Start / Stop Camera:** Toggle camera capture pipeline.
+* **Add / Remove / Refresh:** Manage registered individuals directly from the GUI listbox.
+* **View History / Export Logs:** Access historical sightings and export logs to CSV.
 
 #### CLI Mode
-
 ```bash
 run_cli.bat
 # or
-python main.py
+python main.py --video 0
 ```
-
-**Keyboard Shortcuts:**
-
-| Key | Action           |
-| --- | ---------------- |
-| Q   | Quit             |
-| S   | Save screenshot  |
-| C   | Capture new face |
+* Press `Q` to exit.
+* Press `S` to save an instant frame screenshot to `captured_images/`.
+* Press `C` to register a new face live from the webcam.
 
 ---
 
 ## 📁 Project Structure
 
 ```
-face_recognition_project/
-├── src/
-│   ├── face_recognition_system.py
-│   ├── face_detector.py
-│   ├── face_encoder.py
-│   ├── database_manager.py
-│   └── utils.py
-│
-├── gui/
-│   ├── app.py
-│   └── widgets.py
-│
-├── known_faces/
-│   └── *.jpg
-│
-├── data/
-│   ├── face_encodings.pkl
-│   ├── recognition_history.csv
-│   └── database.db
-│
-├── captured_images/
-│   └── capture_*.jpg
-│
-├── config/
+face-recognition-system-version-control/
+├── .venv/                      # Isolated virtual environment
+├── captured_images/            # Captured screenshots & alerts
+│   └── README.md
+├── config/                     # Configuration files
 │   ├── config.yaml
 │   └── settings.json
-│
-├── logs/
-│   └── app.log
-│
-├── docs/
-│   ├── INSTALLATION.md
-│   ├── USER_GUIDE.md
-│   └── TROUBLESHOOTING.md
-│
-├── main.py
-├── add_faces.py
-├── monitor_confidence.py
-├── INSTALL.bat
-├── run_gui.bat
-├── run_cli.bat
-├── requirements.txt
-└── README.md
+├── data/                       # Local runtime data (generated)
+│   ├── database.db             # SQLite attendance & face log
+│   ├── face_encodings.pkl      # Stored biometric templates
+│   └── recognition_history.csv # CSV export records
+├── docs/                       # Technical documentation
+│   ├── README.md               # Documentation portal
+│   ├── SYSTEM_AUDIT_AND_ROADMAP.md # Security audit & 2026 roadmap
+│   ├── USER_GUIDE.md           # End-user handbook
+│   └── API.md                  # Developer class reference
+├── gui/                        # Modern GUI package
+│   ├── __init__.py
+│   ├── app.py                  # Main Tkinter application
+│   └── widgets.py              # Custom UI components & cards
+├── known_faces/                # Reference images for recognition
+│   └── README.md
+├── models/                     # Deep learning & landmark models
+│   └── README.md
+├── src/                        # Core algorithmic modules
+│   ├── __init__.py
+│   ├── database_manager.py     # SQLite schema & log transactions
+│   ├── face_detector.py        # HOG & Haar detection abstractions
+│   ├── face_encoder.py         # 128-d metric vector computation
+│   ├── face_recognition_system.py # Unified recognition engine
+│   └── utils.py                # Logging, FPS counters & validators
+├── tests/                      # Unit & integration test suites
+│   ├── test_detection.py
+│   └── test_recognition.py
+├── add_faces.py                # Standalone enrollment script
+├── build_exe.bat               # PyInstaller executable builder
+├── fix_images.py               # Image validation utility
+├── INSTALL.bat                 # Automated Windows setup script
+├── main.py                     # Primary runtime entry point
+├── README.md                   # Project overview & guide
+├── requirements.txt            # Managed Python dependencies
+├── run_cli.bat                 # 1-click CLI launcher
+└── run_gui.bat                 # 1-click GUI launcher
 ```
 
 ---
 
-## 🛠️ Technologies
+## 🛠️ Technology Stack & Dependencies
 
-| Technology       | Version  | Purpose            |
-| ---------------- | -------- | ------------------ |
-| Python           | 3.10+    | Language           |
-| OpenCV           | 4.12+    | Vision & video     |
-| dlib             | 19.24+   | Recognition engine |
-| face_recognition | 1.3.0    | Face API           |
-| NumPy            | 2.2+     | Math ops           |
-| Pillow           | 12.0+    | Image handling     |
-| Pandas           | 2.1+     | Data/CSV           |
-| PyYAML           | 6.0+     | Config             |
-| Tkinter          | Built-in | GUI                |
-| SQLite3          | Built-in | DB                 |
-
-**Algorithms:**
-
-* Face Detection: HOG
-* Recognition: 128D embeddings
-* Metric: Euclidean distance
-* Threshold: 0.6 (adjustable)
+| Library / Tool | Version | Purpose |
+| :--- | :---: | :--- |
+| **Python** | `3.10+` | Core programming runtime |
+| **OpenCV (`opencv-python`)** | `>=4.8.0` | Computer vision, frame capture, and image transformations |
+| **`face-recognition`** | `>=1.3.0` | Deep metric facial landmarking and 128-d embedding |
+| **`dlib`** | `>=19.22.99` | High-performance C++ machine learning backend |
+| **NumPy** | `>=1.24.3,<2.0.0` | High-performance numerical linear algebra |
+| **Pillow (PIL)** | `>=10.0.0` | Robust image parsing and color conversion |
+| **Pandas** | `>=2.0.3` | Tabular data analysis and CSV log exports |
+| **PyYAML** | `>=6.0.1` | YAML configuration file parser |
+| **`cryptography`** | `>=42.0.0` | Biometric template encryption at rest |
+| **`sqlite3`** | *Standard Library* | Embedded relational logging database |
+| **`tkinter`** | *Standard Library* | Desktop user interface framework |
 
 ---
 
-## 🔧 Configuration
+## 🐛 Troubleshooting Common Issues
 
-Edit `config/config.yaml`:
+### 1. `ModuleNotFoundError: No module named 'numpy._core._multiarray_umath'`
+* **Cause:** Incompatible NumPy 2.x C-API with pre-compiled `dlib` or `cv2` binary wheels.
+* **Fix:** Reinstall compatible NumPy: `pip install "numpy>=1.26.0,<2.0.0"`.
 
-```yaml
-camera:
-  device: 0
-  width: 640
-  height: 480
-  fps: 30
+### 2. `pip install dlib` fails on Windows
+* **Cause:** Missing CMake and Microsoft Visual Studio C++ build tools.
+* **Fix:** Use pre-compiled wheels for Python 3.10:
+  ```cmd
+  pip install https://github.com/sachadee/Dlib/raw/main/dlib-19.22.99-cp310-cp310-win_amd64.whl
+  pip install face-recognition
+  ```
+  Or create your virtual environment with `--system-site-packages` if installed globally.
 
-face_recognition:
-  tolerance: 0.6
-  model: 'hog'
-  num_jitters: 1
-  process_interval: 3
-
-storage:
-  known_faces_dir: 'known_faces'
-  captured_images_dir: 'captured_images'
-  encodings_file: 'data/face_encodings.pkl'
-  database_file: 'data/database.db'
-  history_file: 'data/recognition_history.csv'
-```
+### 3. Camera fails to open (`Could not open video source`)
+* Verify your webcam is not locked by Zoom, Teams, or another background app.
+* Try changing the video index in `main.py` or `config/config.yaml`:
+  ```cmd
+  python main.py --video 1
+  ```
+* On Windows 10/11, check **Settings → Privacy & Security → Camera** and ensure *"Let desktop apps access your camera"* is enabled.
 
 ---
 
-## 🐛 Troubleshooting
+## 📄 License & Credits
 
-### 1. `ModuleNotFoundError: No module named 'cv2'`
-
-```bash
-pip install opencv-python
-```
-
-### 2. dlib installation fails (Windows)
-
-```bash
-pip install https://github.com/sachadee/Dlib/raw/main/dlib-19.22.99-cp310-cp310-win_amd64.whl
-pip install face-recognition
-```
-
-### 3. "Unsupported image type"
-
-* Delete bad images from `known_faces/`
-* Re-add faces
-* Ensure RGB format
-
-### 4. Camera not opening
-
-```bash
-python main.py --video 1
-```
-
-Also check:
-
-> Settings → Privacy → Camera → Allow apps
-
-### 5. Low FPS / Lag
-
-* Set `process_interval: 5`
-* Use HOG model
-* Reduce resolution
-
-### 6. Face not recognized
-
-* Improve lighting
-* Face camera directly
-* Adjust tolerance (0.65–0.7)
-
-### 7. Virtual environment path issues
-
-```bash
-deactivate
-Remove-Item -Recurse -Force .venv
-python -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
-```
+* Distributed under the **MIT License**.
+* Built using the `face_recognition` library by Adam Geitgey, `dlib` by Davis King, and the OpenCV open-source computer vision team.
 
 ---
 
-## 📊 Performance
+## 📝 Changelog
 
-| Component | Minimum           | Recommended        |
-| --------- | ----------------- | ------------------ |
-| CPU       | Dual-core 2.0 GHz | Quad-core 3.0+ GHz |
-| RAM       | 4 GB              | 8 GB               |
-| Storage   | 500 MB            | 2 GB               |
-| Camera    | 480p              | 720p+              |
-
-**Benchmarks:**
-
-| Config          | FPS   | CPU    | Accuracy |
-| --------------- | ----- | ------ | -------- |
-| HOG + 3rd frame | 25–30 | 15–25% | 95%+     |
-| HOG + 5th frame | 30–35 | 10–15% | 93%+     |
-| CNN + 3rd frame | 15–20 | 35–50% | 98%+     |
+### Version 2.0.0 (2026-11-08)
+* ⚡ **Dependency Modernization:** Updated `requirements.txt` to latest compatible versions; removed invalid standard library modules (`sqlite3`, `tkinter`).
+* 🔒 **NumPy Stability Pin:** Locked `numpy>=1.24.3,<2.0.0` to eliminate fatal C-API ABI mismatch.
+* 🛡️ **Security Audit & 2026 Roadmap:** Published comprehensive flaw analysis, anti-spoofing proposals, and mitigation plan in [`docs/SYSTEM_AUDIT_AND_ROADMAP.md`](docs/SYSTEM_AUDIT_AND_ROADMAP.md).
+* 📁 **Documentation Complete:** Fully populated README portals across [`docs/`](docs/), [`known_faces/`](known_faces/), [`captured_images/`](captured_images/), and [`models/`](models/).
+* 🚀 **Installer Overhaul:** Updated `INSTALL.bat` to safely handle system site-packages and dependency installation without compilation crashes.
 
 ---
-
-## 📚 Documentation
-
-* [Installation Guide](docs/INSTALLATION.md)
-* [User Guide](docs/USER_GUIDE.md)
-* [Troubleshooting](docs/TROUBLESHOOTING.md)
-* [API Docs](docs/API.md)
-
----
-
-## 🎯 Feature Highlights
-
-### Recognition History
-
-* Auto logging with confidence
-* CSV export
-* Date filters
-* Summary stats
-
-### Face Management
-
-* Add/remove faces
-* Gallery view
-* Bulk operations
-
-### Advanced Analytics
-
-* Real-time confidence graphs
-* Color-coded indicators
-* Average confidence tracking
-
----
-
-## 🤝 Contributing
-
-1. Fork repo
-2. Create branch (`git checkout -b feature/AmazingFeature`)
-3. Commit (`git commit -m 'Add AmazingFeature'`)
-4. Push (`git push origin feature/AmazingFeature`)
-5. Open PR
-
----
-
-## 📄 License
-
-Licensed under **MIT License** – see [LICENSE](LICENSE).
-
----
-
-## 🙏 Acknowledgments
-
-* **dlib** – Davis King
-* **OpenCV** – OpenCV team
-* **face_recognition** – Adam Geitgey
-* **Python Community** – for amazing libraries
-
----
-
-## 📞 Contact
-
-**Developer:** Nilay Naha
-**GitHub:** [@AmiNilay](https://github.com/AmiNilay)
-**Project:** [face-recognition-system-version-control](https://github.com/AmiNilay/face-recognition-system-version-control)
-
----
-
-## 🌟 Star History
-
-If this project helped you, please give it a ⭐️!
-
----
-
-### 📝 Changelog
-
-**Version 1.0.0 (2024-10-31)**
-
-* ✅ Initial release
-* ✅ Real-time face recognition
-* ✅ GUI + CLI
-* ✅ Confidence scoring
-* ✅ Recognition history
-* ✅ SQLite integration
-* ✅ Multi-format support
-* ✅ Export functionality
-* ✅ Batch installers
-
----
-
-<p align="center"><b>Made with ❤️ using Python</b></p>
-<p align="center"><a href="#-face-recognition-system">Back to Top ↑</a></p>
+<p align="center"><b>Maintained by Niloy & Antigravity AI Engineering</b></p>

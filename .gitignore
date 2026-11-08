@@ -1,53 +1,142 @@
-# Python
+# ==============================================================================
+# Face Recognition System - Comprehensive .gitignore
+# ==============================================================================
+
+# --- Python Bytecode & Cache ---
 __pycache__/
 *.py[cod]
+*$py.class
 *.pyc
 *.pyo
 *.pyd
 .Python
 *.so
-*.egg
-*.egg-info/
-dist/
-build/
-*.whl
+*.dylib
+*.dll
 
-# Virtual Environment
+# --- Python Virtual Environments ---
+.venv/
 venv/
 env/
 ENV/
+env.bak/
+venv.bak/
+.env/
 
-# IDE
+# --- Environment & Secret Variables ---
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.cert
+
+# --- Distribution, Packaging & PyInstaller ---
+build/
+dist/
+*.spec
+*.egg-info/
+*.egg
+.eggs/
+*.whl
+wheels/
+share/python-wheels/
+develop-eggs/
+downloads/
+parts/
+bin/
+
+# --- IDEs & Developer Tooling ---
 .vscode/
+!.vscode/settings.json.example
 .idea/
 *.swp
 *.swo
+*~
+*.sublime-project
+*.sublime-workspace
+.project
+.pydevproject
+.settings/
 
-# Project specific
-data/*.db
-data/*.pkl
-*.pkl
-*.db
-logs/*.log
-captured_images/*.jpg
-captured_images/*.png
-known_faces/*.jpg
-known_faces/*.png
-
-# But keep README files
-!known_faces/README.md
-!captured_images/README.md
-
-# OS
+# --- Operating System Files ---
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
 desktop.ini
+$RECYCLE.BIN/
 
-# Environment
-.env
-.env.local
+# --- Microsoft Office Temporary Lock Files ---
+~$*.doc*
+~$*.xls*
+~$*.ppt*
 
-# Build files
-*.spec
-build/
-dist/
+# --- Testing & Quality Assurance ---
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.mypy_cache/
+.ruff_cache/
+
+# ==============================================================================
+# Project-Specific Artifacts & Biometric Data
+# ==============================================================================
+
+# --- Database & Biometric Encodings (Sensitive / Privacy Data) ---
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+*.pkl
+*.pickle
+*.npz
+data/*
+!data/README.md
+!data/.gitkeep
+
+# --- Logging & Runtime Diagnostics ---
+*.log
+logs/*
+!logs/.gitkeep
+!logs/README.md
+
+# --- Image Captures & Biometric References ---
+# Ignore all captured frames, unknown face alerts, and registered images
+captured_images/*
+!captured_images/README.md
+!captured_images/.gitkeep
+
+known_faces/*
+!known_faces/README.md
+!known_faces/.gitkeep
+
+# --- Large Model Files & Pretrained Weights ---
+models/*.dat
+models/*.dat.bz2
+models/*.onnx
+models/*.pt
+models/*.pth
+models/*.bin
+models/*.weights
+models/*.pb
+models/*.tflite
+!models/README.md
+!models/.gitkeep
+
+# --- Temporary & Backup Files ---
+*.tmp
+*.temp
+*.bak
+*.orig
+*.sw?

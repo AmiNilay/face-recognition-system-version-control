@@ -1,5 +1,14 @@
 """
-GUI Application for Face Recognition System with Recognition History
+Graphical User Interface (GUI) Application Module
+
+This module implements the primary desktop user interface for the Face Recognition System.
+Built with Tkinter, it provides:
+1. Real-time video rendering with thread-safe UI scheduling.
+2. Live face detection telemetry and confidence scoring indicators.
+3. Enrolled identity management (live camera enrollment, image import, deletion).
+4. Recognition history viewer and database log viewer.
+5. Exporting attendance logs to CSV with Indian Standard Time (IST) timestamps.
+6. Clean, professional dark theme styling without emojis.
 """
 
 import tkinter as tk
@@ -12,1119 +21,1069 @@ import sys
 from pathlib import Path
 from datetime import datetime
 import csv
+import logging
+from typing import Optional, List, Dict, Any
 
-# Add src to path
+# Ensure parent directory is in Python module search path
 sys.path.append(str(Path(__file__).parent.parent))
 
 from src.face_recognition_system import FaceRecognitionSystem
 from src.database_manager import DatabaseManager
-from src.utils import load_config, setup_logging
-import logging
+from src.utils import (
+    load_config, 
+    setup_logging, 
+    get_ist_now, 
+    format_ist_timestamp, 
+    get_ist_date_string, 
+    get_ist_filename_timestamp
+)
 
 class FaceRecognitionGUI:
-    """Main GUI Application for Face Recognition with History Tracking"""
-    
+    """
+    Main Tkinter Desktop Dashboard for Face Recognition & History Tracking.
+    """
+
     def __init__(self):
+        """Initialize the GUI application window and system dependencies."""
         self.root = tk.Tk()
-        self.root.title("Face Recognition System v1.0")
-        self.root.geometry("1200x700")
+        self.root.title("Face Recognition System - Professional Edition")
+        self.root.geometry("1200x720")
+        self.root.minsize(1000, 650)
         self.root.configure(bg="#2b2b2b")
-        
-        # Initialize logging
+
+        # Initialize logging with IST timestamps
         setup_logging()
-        self.logger = logging.getLogger(__name__)
-        
-        # Initialize system components
+        self.logger = logging.getLogger("FaceRecognitionSystem")
+
+        # Core operational components
         self.system = FaceRecognitionSystem()
         self.db_manager = DatabaseManager()
         self.config = load_config()
-        
-        # Video capture
-        self.cap = None
-        self.is_running = False
-        self.video_thread = None
-        
-        # Recognition history tracking
-        self.recognition_history = []
-        self.last_recognized = {}  # Track last recognition time for each person
-        self.recognition_cooldown = 5  # Seconds between logging same person
-        
-        # Auto-save history
-        self.auto_save_enabled = True
-        self.history_file = "data/recognition_history.csv"
-        
-        # Setup GUI
+
+        # Camera streaming state
+        self.cap: Optional[cv2.VideoCapture] = None
+        self.is_running: bool = False
+        self.video_thread: Optional[threading.Thread] = None
+
+        # Recognition tracking & cooldown management
+        self.recognition_history: List[Dict[str, str]] = []
+        self.last_recognized: Dict[str, datetime] = {}
+        # Cooldown prevents repeatedly logging the same person within N seconds
+        self.recognition_cooldown: int = int(
+            self.config.get('ui', {}).get('cooldown_seconds', 5)
+        )
+
+        # Local history file persistence
+        self.auto_save_enabled: bool = True
+        self.history_file: str = self.config.get('storage', {}).get(
+            'history_file', 'data/recognition_history.csv'
+        )
+
+        # Setup user interface layout and menus
         self.setup_gui()
-        
-        # Load known faces
+
+        # Load enrolled identities from disk
         self.load_faces()
-        
-        # Load existing history
+
+        # Load previous recognition history records
         self.load_history()
-        
+
+    # --------------------------------------------------------------------------
+    # 1. GUI LAYOUT SETUP
+    # --------------------------------------------------------------------------
     def setup_gui(self):
-        """Setup the main GUI layout"""
-        
-        # Create menu bar
+        """Construct the visual window layout and control panels."""
         self.create_menu()
-        
-        # Title bar
-        title_frame = tk.Frame(self.root, bg="#1e1e1e", height=70)
-        title_frame.pack(fill="x", padx=10, pady=10)
+
+        # Header Title Bar
+        title_frame = tk.Frame(self.root, bg="#1e1e1e", height=60)
+        title_frame.pack(fill="x", padx=10, pady=(10, 5))
         title_frame.pack_propagate(False)
-        
+
         title_label = tk.Label(
             title_frame,
-            text="🎥 Face Recognition System",
-            font=("Arial", 24, "bold"),
+            text="FACE RECOGNITION SYSTEM",
+            font=("Arial", 20, "bold"),
             bg="#1e1e1e",
             fg="#00ff00"
         )
-        title_label.pack(pady=15)
-        
-        # Main container
+        title_label.pack(side="left", padx=20, pady=10)
+
+        # IST Live Clock Subtitle
+        self.clock_label = tk.Label(
+            title_frame,
+            text=f"IST: {format_ist_timestamp()}",
+            font=("Arial", 11),
+            bg="#1e1e1e",
+            fg="#aaaaaa"
+        )
+        self.clock_label.pack(side="right", padx=20, pady=10)
+        self._update_clock()
+
+        # Main Body Container
         main_container = tk.Frame(self.root, bg="#2b2b2b")
         main_container.pack(fill="both", expand=True, padx=10, pady=5)
-        
-        # Left panel - Video feed
+
+        # Left Panel: Video Feed & Controls
         left_panel = tk.Frame(main_container, bg="#1e1e1e")
         left_panel.pack(side="left", fill="both", expand=True, padx=(0, 5))
-        
-        # Video display
+
+        # Video Canvas
         video_frame = tk.Frame(left_panel, bg="#000000", relief="sunken", bd=2)
         video_frame.pack(padx=10, pady=10, fill="both", expand=True)
-        
-        self.video_label = tk.Label(video_frame, bg="#000000", text="Camera Off", 
-                                    font=("Arial", 16), fg="gray")
+
+        self.video_label = tk.Label(
+            video_frame,
+            bg="#000000",
+            text="Camera Inactive\nClick 'Start Camera' below",
+            font=("Arial", 14),
+            fg="#666666"
+        )
         self.video_label.pack(fill="both", expand=True)
-        
-        # Video controls
+
+        # Camera Control Action Buttons
         controls_frame = tk.Frame(left_panel, bg="#1e1e1e")
-        controls_frame.pack(pady=10)
-        
+        controls_frame.pack(pady=(0, 10))
+
         self.start_btn = tk.Button(
             controls_frame,
-            text="▶ Start Camera",
+            text="Start Camera",
             command=self.start_camera,
             bg="#00aa00",
             fg="white",
-            font=("Arial", 12, "bold"),
-            width=15,
+            font=("Arial", 11, "bold"),
+            width=14,
             height=2,
             cursor="hand2",
             relief="raised"
         )
-        self.start_btn.grid(row=0, column=0, padx=5)
-        
+        self.start_btn.grid(row=0, column=0, padx=6)
+
         self.stop_btn = tk.Button(
             controls_frame,
-            text="⏹ Stop Camera",
+            text="Stop Camera",
             command=self.stop_camera,
             bg="#aa0000",
             fg="white",
-            font=("Arial", 12, "bold"),
-            width=15,
+            font=("Arial", 11, "bold"),
+            width=14,
             height=2,
             state="disabled",
             cursor="hand2",
             relief="raised"
         )
-        self.stop_btn.grid(row=0, column=1, padx=5)
-        
+        self.stop_btn.grid(row=0, column=1, padx=6)
+
         self.capture_btn = tk.Button(
             controls_frame,
-            text="📸 Capture Face",
+            text="Capture Face",
             command=self.capture_face,
             bg="#0066cc",
             fg="white",
-            font=("Arial", 12, "bold"),
-            width=15,
+            font=("Arial", 11, "bold"),
+            width=14,
             height=2,
             state="disabled",
             cursor="hand2",
             relief="raised"
         )
-        self.capture_btn.grid(row=0, column=2, padx=5)
-        
-        # Right panel - Controls and info
+        self.capture_btn.grid(row=0, column=2, padx=6)
+
+        # Right Panel: Telemetry & Face Management
         right_panel = tk.Frame(main_container, bg="#1e1e1e", width=380)
         right_panel.pack(side="right", fill="both", padx=(5, 0))
         right_panel.pack_propagate(False)
-        
-        # Detection info
+
+        # Live Detection Telemetry Box
         info_frame = tk.LabelFrame(
             right_panel,
-            text="📊 Detection Info",
+            text="Detection Telemetry",
             bg="#1e1e1e",
             fg="#00ff00",
-            font=("Arial", 12, "bold"),
-            relief="groove",
-            bd=2
+            font=("Arial", 11, "bold"),
+            padx=10,
+            pady=8
         )
-        info_frame.pack(fill="x", padx=10, pady=10)
-        
+        info_frame.pack(fill="x", padx=10, pady=(10, 5))
+
         self.info_text = tk.Text(
             info_frame,
             height=8,
-            width=35,
             bg="#2b2b2b",
-            fg="white",
-            font=("Courier", 10),
-            relief="flat"
+            fg="#00ff00",
+            font=("Consolas", 10),
+            wrap="word",
+            state="disabled",
+            relief="flat",
+            padx=5,
+            pady=5
         )
-        self.info_text.pack(fill="x", padx=10, pady=10)
-        self.info_text.insert("1.0", "No faces detected")
-        self.info_text.config(state="disabled")
-        
-        # Known faces frame
+        self.info_text.pack(fill="both", expand=True)
+
+        # Enrolled Faces List Panel
         faces_frame = tk.LabelFrame(
             right_panel,
-            text="👥 Known Faces",
+            text="Enrolled Identities",
             bg="#1e1e1e",
             fg="#00ff00",
-            font=("Arial", 12, "bold"),
-            relief="groove",
-            bd=2
+            font=("Arial", 11, "bold"),
+            padx=10,
+            pady=8
         )
-        faces_frame.pack(fill="both", expand=True, padx=10, pady=10)
-        
-        # Listbox with scrollbar
+        faces_frame.pack(fill="both", expand=True, padx=10, pady=5)
+
         list_container = tk.Frame(faces_frame, bg="#1e1e1e")
-        list_container.pack(fill="both", expand=True, padx=10, pady=10)
-        
+        list_container.pack(fill="both", expand=True)
+
         scrollbar = tk.Scrollbar(list_container)
         scrollbar.pack(side="right", fill="y")
-        
+
         self.faces_listbox = tk.Listbox(
             list_container,
             yscrollcommand=scrollbar.set,
             bg="#2b2b2b",
             fg="white",
-            font=("Arial", 11),
+            font=("Arial", 10),
             selectmode="single",
             relief="flat",
             highlightthickness=1,
-            highlightbackground="#00ff00"
+            highlightbackground="#00aa00"
         )
         self.faces_listbox.pack(fill="both", expand=True, side="left")
         scrollbar.config(command=self.faces_listbox.yview)
-        
-        # Face management buttons
+
+        # Face Management Buttons
         btn_frame = tk.Frame(faces_frame, bg="#1e1e1e")
-        btn_frame.pack(pady=10)
-        
+        btn_frame.pack(pady=8)
+
         tk.Button(
             btn_frame,
-            text="➕ Add",
+            text="Add Face",
             command=self.add_face_dialog,
             bg="#00aa00",
             fg="white",
-            font=("Arial", 10, "bold"),
+            font=("Arial", 9, "bold"),
             width=10,
             cursor="hand2"
         ).grid(row=0, column=0, padx=3)
-        
+
         tk.Button(
             btn_frame,
-            text="🗑️ Remove",
+            text="Remove Face",
             command=self.remove_face,
             bg="#aa0000",
             fg="white",
-            font=("Arial", 10, "bold"),
-            width=10,
+            font=("Arial", 9, "bold"),
+            width=11,
             cursor="hand2"
         ).grid(row=0, column=1, padx=3)
-        
+
         tk.Button(
             btn_frame,
-            text="🔄 Refresh",
+            text="Refresh",
             command=self.refresh_faces,
             bg="#0066cc",
             fg="white",
-            font=("Arial", 10, "bold"),
+            font=("Arial", 9, "bold"),
             width=10,
             cursor="hand2"
         ).grid(row=0, column=2, padx=3)
-        
-        # Status bar
+
+        # Bottom Status Bar
         self.status_bar = tk.Label(
             self.root,
-            text="Ready",
+            text=" Ready",
             bg="#1e1e1e",
             fg="#00ff00",
-            font=("Arial", 10),
+            font=("Arial", 9),
             anchor="w",
-            relief="sunken"
+            relief="sunken",
+            padx=5,
+            pady=2
         )
         self.status_bar.pack(side="bottom", fill="x")
-        
+
+    def _update_clock(self):
+        """Update top-bar clock with current IST time every second."""
+        if hasattr(self, 'clock_label') and self.root.winfo_exists():
+            self.clock_label.config(text=f"IST: {format_ist_timestamp()}")
+            self.root.after(1000, self._update_clock)
+
+    # --------------------------------------------------------------------------
+    # 2. MENU BAR SETUP
+    # --------------------------------------------------------------------------
     def create_menu(self):
-        """Create menu bar"""
+        """Configure the top window application menu bar."""
         menubar = tk.Menu(self.root)
         self.root.config(menu=menubar)
-        
-        # File menu
+
+        # File Menu
         file_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="File", menu=file_menu)
-        file_menu.add_command(label="Add Face from File", command=self.add_face_dialog)
+        file_menu.add_command(label="Enroll Face from Image File", command=self.add_face_dialog)
         file_menu.add_separator()
-        file_menu.add_command(label="Export Recognition History", command=self.export_recognition_history)
-        file_menu.add_command(label="Export Database Logs", command=self.export_logs)
+        file_menu.add_command(label="Export Recognition History (CSV)", command=self.export_recognition_history)
+        file_menu.add_command(label="Export Database Attendance Logs", command=self.export_logs)
         file_menu.add_separator()
-        file_menu.add_command(label="Clear History", command=self.clear_history)
+        file_menu.add_command(label="Clear Recognition History", command=self.clear_history)
         file_menu.add_separator()
         file_menu.add_command(label="Exit", command=self.on_closing)
-        
-        # View menu
+
+        # View Menu
         view_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="View", menu=view_menu)
         view_menu.add_command(label="Recognition History", command=self.show_history)
         view_menu.add_command(label="Database History", command=self.show_db_history)
-        view_menu.add_command(label="Known Faces Gallery", command=self.show_gallery)
+        view_menu.add_command(label="Enrolled Faces Gallery", command=self.show_gallery)
         view_menu.add_separator()
-        view_menu.add_command(label="Today's Recognitions", command=self.show_today_history)
-        
-        # Settings menu
+        view_menu.add_command(label="Today's Recognitions (IST)", command=self.show_today_history)
+
+        # Settings Menu
         settings_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Settings", menu=settings_menu)
-        
-        # Auto-save toggle
         self.auto_save_var = tk.BooleanVar(value=True)
         settings_menu.add_checkbutton(
-            label="Auto-save History",
+            label="Auto-save History to Disk",
             variable=self.auto_save_var,
             command=self.toggle_auto_save
         )
-        settings_menu.add_command(label="Set Recognition Cooldown", command=self.set_cooldown)
-        
-        # Help menu
+        settings_menu.add_command(label="Set Recognition Cooldown...", command=self.set_cooldown)
+
+        # Help Menu
         help_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Help", menu=help_menu)
-        help_menu.add_command(label="About", command=self.show_about)
-        
-    def load_faces(self):
-        """Load known faces on startup"""
-        try:
-            if not self.system.load_encodings():
-                if self.system.load_known_faces():
-                    self.system.save_encodings()
-            
-            self.refresh_faces()
-            count = len(self.system.known_face_names)
-            self.update_status(f"Loaded {count} known face(s)")
-            self.logger.info(f"Loaded {count} known faces")
-        except Exception as e:
-            self.logger.error(f"Error loading faces: {e}")
-            messagebox.showerror("Error", f"Failed to load faces: {str(e)}")
-    
-    def load_history(self):
-        """Load existing recognition history from CSV"""
-        try:
-            if os.path.exists(self.history_file):
-                with open(self.history_file, 'r', newline='', encoding='utf-8') as f:
-                    reader = csv.DictReader(f)
-                    self.recognition_history = list(reader)
-                self.logger.info(f"Loaded {len(self.recognition_history)} history records")
-        except Exception as e:
-            self.logger.error(f"Error loading history: {e}")
-    
-    def save_history(self):
-        """Save recognition history to CSV"""
-        try:
-            os.makedirs(os.path.dirname(self.history_file), exist_ok=True)
-            
-            with open(self.history_file, 'w', newline='', encoding='utf-8') as f:
-                if self.recognition_history:
-                    fieldnames = self.recognition_history[0].keys()
-                    writer = csv.DictWriter(f, fieldnames=fieldnames)
-                    writer.writeheader()
-                    writer.writerows(self.recognition_history)
-            
-            self.logger.info(f"Saved {len(self.recognition_history)} history records")
-        except Exception as e:
-            self.logger.error(f"Error saving history: {e}")
-    
-    def add_recognition_to_history(self, name, confidence):
-        """Add a recognition event to history with cooldown"""
-        try:
-            current_time = datetime.now()
-            
-            # Check cooldown
-            if name in self.last_recognized:
-                time_diff = (current_time - self.last_recognized[name]).total_seconds()
-                if time_diff < self.recognition_cooldown:
-                    return  # Skip if within cooldown period
-            
-            # Add to history
-            record = {
-                'timestamp': current_time.strftime("%Y-%m-%d %H:%M:%S"),
-                'name': name,
-                'confidence': f"{float(confidence):.2f}%",
-                'date': current_time.strftime("%Y-%m-%d"),
-                'time': current_time.strftime("%H:%M:%S")
-            }
-            
-            self.recognition_history.append(record)
-            self.last_recognized[name] = current_time
-            
-            # Auto-save if enabled
-            if self.auto_save_enabled:
-                self.save_history()
-            
-            self.logger.info(f"Recognition logged: {name} ({confidence:.1f}%)")
-            
-        except Exception as e:
-            self.logger.error(f"Error adding to history: {e}")
-            
-    def refresh_faces(self):
-        """Refresh the faces listbox"""
-        self.faces_listbox.delete(0, tk.END)
-        
-        for i, name in enumerate(self.system.known_face_names, 1):
-            self.faces_listbox.insert(tk.END, f"  {i}. {name}")
-        
-        if len(self.system.known_face_names) == 0:
-            self.faces_listbox.insert(tk.END, "  (No faces registered)")
-            
+        help_menu.add_command(label="About System", command=self.show_about)
+
+    # --------------------------------------------------------------------------
+    # 3. CAMERA & THREAD-SAFE VIDEO PIPELINE
+    # --------------------------------------------------------------------------
     def start_camera(self):
-        """Start the camera"""
+        """Initiate video capture device and spawn worker background thread."""
         try:
-            self.cap = cv2.VideoCapture(0)
-            
-            # Set camera properties
+            device_index = int(self.config.get('camera', {}).get('device', 0))
+            self.cap = cv2.VideoCapture(device_index)
+
             self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
             self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
             self.cap.set(cv2.CAP_PROP_FPS, 30)
             self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-            
+
             if not self.cap.isOpened():
-                messagebox.showerror("Error", "Could not open camera!")
+                messagebox.showerror("Camera Error", f"Could not access camera device {device_index}!")
                 return
-            
+
             self.is_running = True
-            
-            # Update buttons
             self.start_btn.config(state="disabled")
             self.stop_btn.config(state="normal")
             self.capture_btn.config(state="normal")
-            
-            # Start video thread
+
+            # Spawn video capture loop in background daemon thread
             self.video_thread = threading.Thread(target=self.video_loop, daemon=True)
             self.video_thread.start()
-            
-            self.update_status("Camera started")
+
+            self.update_status("Camera stream active")
             self.logger.info("Camera started")
-            
-        except Exception as e:
-            self.logger.error(f"Error starting camera: {e}")
-            messagebox.showerror("Error", f"Failed to start camera: {str(e)}")
-            
+
+        except Exception as err:
+            self.logger.error(f"Error starting camera: {err}")
+            messagebox.showerror("Error", f"Failed to start camera: {err}")
+
     def stop_camera(self):
-        """Stop the camera"""
+        """Gracefully release camera resources and restore UI controls."""
         self.is_running = False
-        
+
         if self.cap:
-            self.cap.release()
-        
-        # Update buttons
+            try:
+                self.cap.release()
+            except Exception:
+                pass
+            self.cap = None
+
         self.start_btn.config(state="normal")
         self.stop_btn.config(state="disabled")
         self.capture_btn.config(state="disabled")
-        
-        # Clear video
-        self.video_label.config(image="", text="Camera Off", fg="gray")
-        
-        self.update_status("Camera stopped")
+
+        self.video_label.config(image="", text="Camera Inactive\nClick 'Start Camera' below", fg="#666666")
+        self.update_status("Camera stream stopped")
         self.logger.info("Camera stopped")
-        
+
     def video_loop(self):
-        """Video capture and processing loop"""
+        """
+        Background worker thread executing video decoding and face recognition.
+        Crucial Architecture Rule:
+        Worker threads do not modify Tkinter widgets directly. Instead, UI updates
+        are marshaled back to the main thread via root.after().
+        """
         import face_recognition
         frame_count = 0
-        
+
         while self.is_running:
             try:
+                if self.cap is None or not self.cap.isOpened():
+                    break
+
                 ret, frame = self.cap.read()
-                
                 if not ret:
                     break
-                
+
                 frame_count += 1
-                
-                # Process every 3rd frame
+
+                # Process face recognition every 3rd frame to optimize CPU load
                 if frame_count % 3 == 0:
                     small_frame = cv2.resize(frame, (0, 0), fx=0.25, fy=0.25)
                     rgb_small_frame = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
-                    
+
                     self.system.face_locations = face_recognition.face_locations(
                         rgb_small_frame,
                         number_of_times_to_upsample=1,
                         model="hog"
                     )
-                    
+
                     if self.system.face_locations:
                         self.system.face_encodings = face_recognition.face_encodings(
                             rgb_small_frame,
                             self.system.face_locations,
                             num_jitters=1
                         )
-                        
                         self.system.face_names = []
                         self.system.face_confidences = []
-                        
-                        for face_encoding in self.system.face_encodings:
-                            name, confidence = self.system.recognize_face(face_encoding)
+
+                        for enc in self.system.face_encodings:
+                            name, conf = self.system.recognize_face(enc)
                             self.system.face_names.append(name)
-                            self.system.face_confidences.append(confidence)
-                            
-                            # Log recognition to history
-                            if name != "Unknown" and confidence > 0:
-                                self.add_recognition_to_history(name, confidence)
-                                
-                                # Log to database
+                            self.system.face_confidences.append(conf)
+
+                            # Log recognized face if cooldown has elapsed
+                            if name != "Unknown" and conf >= 50.0:
+                                self.add_recognition_to_history(name, conf)
                                 try:
-                                    confidence_value = float(confidence) / 100.0
-                                    self.db_manager.log_recognition(name, confidence_value)
-                                except Exception as e:
-                                    self.logger.warning(f"Could not log to database: {e}")
+                                    self.db_manager.log_recognition(name, conf / 100.0)
+                                except Exception as log_err:
+                                    self.logger.warning(f"Database logging warning: {log_err}")
                     else:
                         self.system.face_encodings = []
                         self.system.face_names = []
                         self.system.face_confidences = []
-                
-                # Draw results
+
+                # Render overlays onto full frame
                 self.system.draw_results(frame)
-                
-                # Convert to RGB for display
+
+                # Prepare frame for Tkinter rendering (BGR -> RGB -> PIL -> PhotoImage)
                 frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                
-                # Resize for display
-                height, width = frame_rgb.shape[:2]
+                h, w = frame_rgb.shape[:2]
                 max_width = 750
-                if width > max_width:
-                    ratio = max_width / width
-                    new_width = int(width * ratio)
-                    new_height = int(height * ratio)
-                    frame_rgb = cv2.resize(frame_rgb, (new_width, new_height))
-                
-                # Convert to PIL Image
-                image = Image.fromarray(frame_rgb)
-                photo = ImageTk.PhotoImage(image=image)
-                
-                # Update video display
-                self.video_label.config(image=photo, text="")
-                self.video_label.image = photo
-                
-                # Update info
-                self.update_detection_info()
-                
-            except Exception as e:
-                self.logger.error(f"Error in video loop: {e}")
-                import traceback
-                self.logger.error(traceback.format_exc())
-                
+                if w > max_width:
+                    ratio = max_width / float(w)
+                    frame_rgb = cv2.resize(frame_rgb, (max_width, int(h * ratio)))
+
+                pil_image = Image.fromarray(frame_rgb)
+                photo = ImageTk.PhotoImage(image=pil_image)
+
+                # Thread-safe dispatch to main UI event loop
+                self.root.after(0, self._render_ui_frame, photo)
+
+            except Exception as loop_err:
+                self.logger.error(f"Error in video loop: {loop_err}")
+                break
+
+    def _render_ui_frame(self, photo: ImageTk.PhotoImage):
+        """Main-thread consumer updating video canvas and telemetry."""
+        if self.is_running:
+            self.video_label.config(image=photo, text="")
+            # Keep persistent reference to prevent garbage collection
+            self.video_label.image = photo
+            self.update_detection_info()
+
     def update_detection_info(self):
-        """Update detection info display with confidence scores"""
+        """Update detection telemetry text panel."""
         try:
             self.info_text.config(state="normal")
             self.info_text.delete("1.0", tk.END)
-            
-            if len(self.system.face_locations) == 0:
-                self.info_text.insert("1.0", "No faces detected")
+
+            count = len(self.system.face_locations)
+            if count == 0:
+                self.info_text.insert("1.0", "Status: Monitoring feed...\nNo faces detected in view.")
             else:
-                info = f"Faces Detected: {len(self.system.face_locations)}\n"
-                info += "=" * 35 + "\n\n"
-                
-                # Ensure we have confidence scores
-                if not hasattr(self.system, 'face_confidences'):
-                    self.system.face_confidences = []
-                
-                # Match faces with confidences
+                info_lines = [f"Faces in View: {count}", "=" * 32]
+
                 for i, name in enumerate(self.system.face_names):
-                    # Get confidence safely
-                    if i < len(self.system.face_confidences):
-                        confidence = self.system.face_confidences[i]
-                    else:
-                        confidence = 0.0
-                    
-                    # Ensure confidence is a number
-                    try:
-                        confidence = float(confidence)
-                    except:
-                        confidence = 0.0
-                    
+                    conf = self.system.face_confidences[i] if i < len(self.system.face_confidences) else 0.0
                     if name != "Unknown":
-                        # Color code based on confidence
-                        if confidence >= 70:
-                            status = "🟢"  # High confidence
-                        elif confidence >= 50:
-                            status = "🟡"  # Medium confidence
+                        if conf >= 70.0:
+                            level = "[HIGH]  "
+                        elif conf >= 50.0:
+                            level = "[MEDIUM]"
                         else:
-                            status = "🟠"  # Low confidence
-                        
-                        info += f"{status} Face {i+1}: {name}\n"
-                        info += f"   Confidence: {confidence:.1f}%\n\n"
+                            level = "[LOW]   "
+                        info_lines.append(f"{level} {name} ({conf:.1f}%)")
                     else:
-                        info += f"❌ Face {i+1}: Unknown\n\n"
-                
-                # Show average confidence
-                if self.system.face_confidences:
-                    try:
-                        valid_confidences = [float(c) for c in self.system.face_confidences if float(c) > 0]
-                        if valid_confidences:
-                            avg_conf = sum(valid_confidences) / len(valid_confidences)
-                            info += "=" * 35 + "\n"
-                            info += f"Average Confidence: {avg_conf:.1f}%\n"
-                    except:
-                        pass
-                
-                self.info_text.insert("1.0", info)
-            
+                        info_lines.append(f"[UNKNOWN] Unregistered Subject")
+
+                # Show average confidence score
+                valid_confs = [c for c in self.system.face_confidences if c > 0.0]
+                if valid_confs:
+                    avg = sum(valid_confs) / float(len(valid_confs))
+                    info_lines.append("=" * 32)
+                    info_lines.append(f"Mean Confidence: {avg:.1f}%")
+
+                self.info_text.insert("1.0", "\n".join(info_lines))
+
             self.info_text.config(state="disabled")
-        except Exception as e:
-            self.logger.error(f"Error updating detection info: {e}")
-                
+        except Exception:
+            pass
+
+    # --------------------------------------------------------------------------
+    # 4. IDENTITY MANAGEMENT
+    # --------------------------------------------------------------------------
+    def load_faces(self):
+        """Load enrolled identities into system and update GUI listbox."""
+        if not self.system.load_encodings():
+            if self.system.load_known_faces():
+                self.system.save_encodings()
+        self.refresh_faces()
+
+    def refresh_faces(self):
+        """Repopulate the enrolled identities listbox."""
+        self.faces_listbox.delete(0, tk.END)
+        for i, name in enumerate(self.system.known_face_names, 1):
+            self.faces_listbox.insert(tk.END, f"  {i}. {name}")
+
+        if not self.system.known_face_names:
+            self.faces_listbox.insert(tk.END, "  (No enrolled identities)")
+
     def capture_face(self):
-        """Capture face from current frame"""
+        """Enroll a face detected in the live camera frame."""
         if not self.is_running or self.cap is None:
-            messagebox.showwarning("Warning", "Camera is not running!")
+            messagebox.showwarning("Warning", "Camera is not active. Click 'Start Camera' first.")
             return
-        
-        try:
-            ret, frame = self.cap.read()
-            if not ret:
-                messagebox.showerror("Error", "Could not capture frame!")
-                return
-            
-            # Detect faces
-            import face_recognition
-            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            temp_locations = face_recognition.face_locations(rgb_frame)
-            
-            if len(temp_locations) == 0:
-                messagebox.showwarning("No Face", "No face detected in frame!")
-                return
-            
-            if len(temp_locations) > 1:
-                messagebox.showwarning("Multiple Faces", 
-                    "Multiple faces detected! Please ensure only one face is visible.")
-                return
-            
-            # Ask for name
-            name = simpledialog.askstring("Add Face", "Enter person's name:")
-            
-            if name and name.strip():
-                name = name.strip()
-                
-                # Add face
-                success = self.system.add_face_from_frame(frame, name)
-                
-                if success:
-                    self.db_manager.add_person(name, f"known_faces/{name.replace(' ', '_')}.jpg")
-                    self.refresh_faces()
-                    messagebox.showinfo("Success", f"Face added for {name}!")
-                    self.update_status(f"Added face: {name}")
-                    self.logger.info(f"Added face: {name}")
-                else:
-                    messagebox.showerror("Error", "Could not encode face!")
-                    
-        except Exception as e:
-            self.logger.error(f"Error capturing face: {e}")
-            messagebox.showerror("Error", f"Failed to capture face: {str(e)}")
-            
+
+        ret, frame = self.cap.read()
+        if not ret:
+            messagebox.showerror("Error", "Could not capture image from camera.")
+            return
+
+        import face_recognition
+        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        locations = face_recognition.face_locations(rgb_frame)
+
+        if len(locations) == 0:
+            messagebox.showwarning("No Face Detected", "No face was detected. Please position yourself clearly.")
+            return
+
+        if len(locations) > 1:
+            messagebox.showwarning("Multiple Faces", "Multiple faces detected. Ensure only one person is in view.")
+            return
+
+        name = simpledialog.askstring("Enroll Face", "Enter person's name:")
+        if name and name.strip():
+            clean_name = name.strip()
+            # Enroll into system
+            encodings = face_recognition.face_encodings(rgb_frame, locations, num_jitters=1)
+            if encodings:
+                os.makedirs("known_faces", exist_ok=True)
+                safe_filename = clean_name.replace(" ", "_")
+                img_path = f"known_faces/{safe_filename}.jpg"
+
+                pil_img = Image.fromarray(rgb_frame)
+                pil_img.save(img_path, 'JPEG', quality=95)
+
+                self.system.known_face_encodings.append(encodings[0])
+                self.system.known_face_names.append(clean_name)
+                self.system.save_encodings()
+
+                self.db_manager.add_person(clean_name, img_path)
+                self.refresh_faces()
+
+                messagebox.showinfo("Success", f"Enrolled '{clean_name}' successfully.")
+                self.update_status(f"Enrolled: {clean_name}")
+                self.logger.info(f"Enrolled face: {clean_name}")
+            else:
+                messagebox.showerror("Error", "Could not compute biometric encoding.")
+
     def add_face_dialog(self):
-        """Add face from image file"""
-        try:
-            file_path = filedialog.askopenfilename(
-                title="Select Image",
-                filetypes=[("Image files", "*.jpg *.jpeg *.png *.bmp")]
-            )
-            
-            if file_path:
-                name = simpledialog.askstring("Add Face", "Enter person's name:")
-                
-                if name and name.strip():
-                    name = name.strip()
-                    success = self.system.add_face_from_image(file_path, name)
-                    
-                    if success:
-                        self.db_manager.add_person(name, f"known_faces/{name.replace(' ', '_')}.jpg")
+        """Enroll an identity from an image file on disk."""
+        file_path = filedialog.askopenfilename(
+            title="Select Portrait Image",
+            filetypes=[("Image files", "*.jpg *.jpeg *.png *.webp *.bmp")]
+        )
+        if file_path:
+            name = simpledialog.askstring("Enroll Identity", "Enter person's name:")
+            if name and name.strip():
+                clean_name = name.strip()
+                try:
+                    with Image.open(file_path) as pil_img:
+                        rgb_img = pil_img.convert("RGB")
+                        arr = np.array(rgb_img, dtype=np.uint8)
+
+                    import face_recognition
+                    encodings = face_recognition.face_encodings(arr, num_jitters=1)
+
+                    if encodings:
+                        safe_filename = clean_name.replace(" ", "_")
+                        target_path = f"known_faces/{safe_filename}.jpg"
+                        os.makedirs("known_faces", exist_ok=True)
+                        rgb_img.save(target_path, "JPEG", quality=95)
+
+                        self.system.known_face_encodings.append(encodings[0])
+                        self.system.known_face_names.append(clean_name)
+                        self.system.save_encodings()
+
+                        self.db_manager.add_person(clean_name, target_path)
                         self.refresh_faces()
-                        messagebox.showinfo("Success", f"Face added for {name}!")
-                        self.update_status(f"Added face: {name}")
-                        self.logger.info(f"Added face from file: {name}")
+
+                        messagebox.showinfo("Success", f"Enrolled '{clean_name}' from file.")
+                        self.update_status(f"Enrolled: {clean_name}")
                     else:
-                        messagebox.showerror("Error", "No face detected in image!")
-                        
-        except Exception as e:
-            self.logger.error(f"Error adding face from file: {e}")
-            messagebox.showerror("Error", f"Failed to add face: {str(e)}")
-            
+                        messagebox.showerror("Error", "No recognizable face found in selected image.")
+                except Exception as err:
+                    messagebox.showerror("Error", f"Failed to process image: {err}")
+
     def remove_face(self):
-        """Remove selected face"""
+        """Delete selected identity from enrolled faces."""
         selection = self.faces_listbox.curselection()
-        
         if not selection:
-            messagebox.showwarning("No Selection", "Please select a face to remove!")
+            messagebox.showwarning("Selection Required", "Please select an identity from the list to remove.")
             return
-        
+
+        selected_text = self.faces_listbox.get(selection[0])
+        name = selected_text.split(". ", 1)[1] if ". " in selected_text else selected_text.strip()
+
+        if name == "(No enrolled identities)":
+            return
+
+        if messagebox.askyesno("Confirm Deletion", f"Permanently remove '{name}' from enrolled identities?"):
+            if self.system.remove_face(name):
+                self.db_manager.delete_person(name)
+                self.refresh_faces()
+                messagebox.showinfo("Success", f"Removed '{name}' from system.")
+                self.update_status(f"Removed: {name}")
+            else:
+                messagebox.showerror("Error", f"Could not remove '{name}'.")
+
+    # --------------------------------------------------------------------------
+    # 5. RECOGNITION HISTORY & REPORTING (IST)
+    # --------------------------------------------------------------------------
+    def add_recognition_to_history(self, name: str, confidence: float):
+        """
+        Record a recognition event with cooldown deduplication in IST.
+        """
+        now_ist = get_ist_now()
+
+        # Cooldown check: prevent duplicate logs for same person within cooldown window
+        if name in self.last_recognized:
+            elapsed = (now_ist - self.last_recognized[name]).total_seconds()
+            if elapsed < self.recognition_cooldown:
+                return
+
+        self.last_recognized[name] = now_ist
+
+        record = {
+            'name': name,
+            'date': get_ist_date_string(now_ist),
+            'time': now_ist.strftime("%H:%M:%S IST"),
+            'timestamp': format_ist_timestamp(now_ist),
+            'confidence': f"{confidence:.1f}%"
+        }
+        self.recognition_history.append(record)
+
+        if self.auto_save_enabled:
+            self.save_history()
+
+    def save_history(self):
+        """Persist recognition history records to CSV."""
         try:
-            selected_text = self.faces_listbox.get(selection[0])
-            # Extract name (remove number prefix)
-            name = selected_text.split(". ", 1)[1] if ". " in selected_text else selected_text.strip()
-            
-            if messagebox.askyesno("Confirm", f"Remove '{name}' from known faces?"):
-                success = self.system.remove_face(name)
-                
-                if success:
-                    self.db_manager.delete_person(name)
-                    self.refresh_faces()
-                    messagebox.showinfo("Success", f"'{name}' removed!")
-                    self.update_status(f"Removed face: {name}")
-                    self.logger.info(f"Removed face: {name}")
-                else:
-                    messagebox.showerror("Error", "Could not remove face!")
-                    
-        except Exception as e:
-            self.logger.error(f"Error removing face: {e}")
-            messagebox.showerror("Error", f"Failed to remove face: {str(e)}")
-    
+            Path(self.history_file).parent.mkdir(parents=True, exist_ok=True)
+            with open(self.history_file, 'w', newline='', encoding='utf-8') as f:
+                if self.recognition_history:
+                    fieldnames = ['name', 'date', 'time', 'timestamp', 'confidence']
+                    writer = csv.DictWriter(f, fieldnames=fieldnames)
+                    writer.writeheader()
+                    writer.writerows(self.recognition_history)
+        except Exception as err:
+            self.logger.error(f"Error saving history: {err}")
+
+    def load_history(self):
+        """Load historical records from CSV."""
+        if os.path.exists(self.history_file):
+            try:
+                with open(self.history_file, 'r', encoding='utf-8') as f:
+                    reader = csv.DictReader(f)
+                    self.recognition_history = list(reader)
+            except Exception as err:
+                self.logger.error(f"Error loading history: {err}")
+
     def show_history(self):
-        """Show recognition history from CSV"""
-        try:
-            history_window = tk.Toplevel(self.root)
-            history_window.title("Recognition History")
-            history_window.geometry("900x600")
-            history_window.configure(bg="#2b2b2b")
-            
-            # Title
-            title = tk.Label(
-                history_window,
-                text="📜 Recognition History",
-                font=("Arial", 16, "bold"),
-                bg="#2b2b2b",
-                fg="#00ff00"
-            )
-            title.pack(pady=10)
-            
-            # Stats
-            stats_frame = tk.Frame(history_window, bg="#1e1e1e")
-            stats_frame.pack(fill="x", padx=10, pady=5)
-            
-            total_records = len(self.recognition_history)
-            unique_people = len(set(r['name'] for r in self.recognition_history)) if self.recognition_history else 0
-            
-            tk.Label(
-                stats_frame,
-                text=f"Total Records: {total_records} | Unique People: {unique_people}",
-                bg="#1e1e1e",
-                fg="white",
-                font=("Arial", 11)
-            ).pack(pady=5)
-            
-            # Create frame for treeview
-            tree_frame = tk.Frame(history_window, bg="#2b2b2b")
-            tree_frame.pack(fill="both", expand=True, padx=10, pady=10)
-            
-            # Scrollbars
-            vsb = tk.Scrollbar(tree_frame, orient="vertical")
-            vsb.pack(side="right", fill="y")
-            
-            hsb = tk.Scrollbar(tree_frame, orient="horizontal")
-            hsb.pack(side="bottom", fill="x")
-            
-            # Create treeview
-            tree = ttk.Treeview(
-                tree_frame,
-                columns=("Name", "Date", "Time", "Confidence"),
-                show="headings",
-                yscrollcommand=vsb.set,
-                xscrollcommand=hsb.set
-            )
-            
-            tree.heading("Name", text="Name")
-            tree.heading("Date", text="Date")
-            tree.heading("Time", text="Time")
-            tree.heading("Confidence", text="Confidence")
-            
-            tree.column("Name", width=200)
-            tree.column("Date", width=150)
-            tree.column("Time", width=150)
-            tree.column("Confidence", width=120)
-            
-            # Add data (most recent first)
-            for record in reversed(self.recognition_history):
-                tree.insert("", tk.END, values=(
-                    record.get('name', ''),
-                    record.get('date', ''),
-                    record.get('time', ''),
-                    record.get('confidence', '')
-                ))
-            
-            tree.pack(fill="both", expand=True, side="left")
-            vsb.config(command=tree.yview)
-            hsb.config(command=tree.xview)
-            
-            # Buttons
-            btn_frame = tk.Frame(history_window, bg="#2b2b2b")
-            btn_frame.pack(pady=10)
-            
-            tk.Button(
-                btn_frame,
-                text="📊 Export",
-                command=self.export_recognition_history,
-                bg="#0066cc",
-                fg="white",
-                font=("Arial", 10, "bold"),
-                width=12
-            ).pack(side="left", padx=5)
-            
-            tk.Button(
-                btn_frame,
-                text="🔄 Refresh",
-                command=lambda: self.show_history(),
-                bg="#00aa00",
-                fg="white",
-                font=("Arial", 10, "bold"),
-                width=12
-            ).pack(side="left", padx=5)
-            
-            tk.Button(
-                btn_frame,
-                text="🗑️ Clear All",
-                command=self.clear_history,
-                bg="#aa0000",
-                fg="white",
-                font=("Arial", 10, "bold"),
-                width=12
-            ).pack(side="left", padx=5)
-            
-        except Exception as e:
-            self.logger.error(f"Error showing history: {e}")
-            messagebox.showerror("Error", f"Failed to show history: {str(e)}")
-    
-    def show_db_history(self):
-        """Show database recognition history"""
-        try:
-            history_window = tk.Toplevel(self.root)
-            history_window.title("Database History")
-            history_window.geometry("800x500")
-            history_window.configure(bg="#2b2b2b")
-            
-            # Title
-            title = tk.Label(
-                history_window,
-                text="💾 Database History",
-                font=("Arial", 16, "bold"),
-                bg="#2b2b2b",
-                fg="#00ff00"
-            )
-            title.pack(pady=10)
-            
-            # Create treeview
-            tree_frame = tk.Frame(history_window, bg="#2b2b2b")
-            tree_frame.pack(fill="both", expand=True, padx=10, pady=10)
-            
-            scrollbar = tk.Scrollbar(tree_frame)
-            scrollbar.pack(side="right", fill="y")
-            
-            tree = ttk.Treeview(
-                tree_frame,
-                columns=("Name", "Time", "Confidence"),
-                show="headings",
-                yscrollcommand=scrollbar.set
-            )
-            
-            tree.heading("Name", text="Name")
-            tree.heading("Time", text="Time")
-            tree.heading("Confidence", text="Confidence")
-            
-            tree.column("Name", width=200)
-            tree.column("Time", width=300)
-            tree.column("Confidence", width=100)
-            
-            # Get history
-            history = self.db_manager.get_recognition_history(limit=100)
-            
-            for _, row in history.iterrows():
-                tree.insert("", tk.END, values=(
-                    row['name'],
-                    row['timestamp'],
-                    f"{row['confidence']:.1%}"
-                ))
-            
-            tree.pack(fill="both", expand=True, side="left")
-            scrollbar.config(command=tree.yview)
-            
-        except Exception as e:
-            self.logger.error(f"Error showing database history: {e}")
-            messagebox.showerror("Error", f"Failed to load database history: {str(e)}")
-    
+        """Display recognition history modal dialog."""
+        window = tk.Toplevel(self.root)
+        window.title("Recognition History (IST)")
+        window.geometry("900x550")
+        window.configure(bg="#2b2b2b")
+
+        title = tk.Label(
+            window,
+            text="Recognition History Records (IST)",
+            font=("Arial", 16, "bold"),
+            bg="#2b2b2b",
+            fg="#00ff00"
+        )
+        title.pack(pady=10)
+
+        # Telemetry Summary
+        stats_frame = tk.Frame(window, bg="#1e1e1e")
+        stats_frame.pack(fill="x", padx=10, pady=5)
+        total = len(self.recognition_history)
+        unique = len(set(r['name'] for r in self.recognition_history)) if self.recognition_history else 0
+
+        tk.Label(
+            stats_frame,
+            text=f"Total Sightings: {total} | Unique Identities: {unique}",
+            bg="#1e1e1e",
+            fg="white",
+            font=("Arial", 10)
+        ).pack(pady=6)
+
+        # Table View
+        tree_frame = tk.Frame(window, bg="#2b2b2b")
+        tree_frame.pack(fill="both", expand=True, padx=10, pady=10)
+
+        vsb = tk.Scrollbar(tree_frame, orient="vertical")
+        vsb.pack(side="right", fill="y")
+        hsb = tk.Scrollbar(tree_frame, orient="horizontal")
+        hsb.pack(side="bottom", fill="x")
+
+        tree = ttk.Treeview(
+            tree_frame,
+            columns=("Name", "Date", "Time", "Confidence"),
+            show="headings",
+            yscrollcommand=vsb.set,
+            xscrollcommand=hsb.set
+        )
+        tree.heading("Name", text="Identity Name")
+        tree.heading("Date", text="Date (IST)")
+        tree.heading("Time", text="Time (IST)")
+        tree.heading("Confidence", text="Match Confidence")
+
+        tree.column("Name", width=220)
+        tree.column("Date", width=140)
+        tree.column("Time", width=140)
+        tree.column("Confidence", width=120)
+
+        for record in reversed(self.recognition_history):
+            tree.insert("", tk.END, values=(
+                record.get('name', ''),
+                record.get('date', ''),
+                record.get('time', ''),
+                record.get('confidence', '')
+            ))
+
+        tree.pack(fill="both", expand=True, side="left")
+        vsb.config(command=tree.yview)
+        hsb.config(command=tree.xview)
+
+        # Action Buttons
+        btn_frame = tk.Frame(window, bg="#2b2b2b")
+        btn_frame.pack(pady=10)
+
+        tk.Button(
+            btn_frame,
+            text="Export CSV",
+            command=self.export_recognition_history,
+            bg="#0066cc",
+            fg="white",
+            font=("Arial", 10, "bold"),
+            width=12
+        ).pack(side="left", padx=5)
+
+        tk.Button(
+            btn_frame,
+            text="Clear All",
+            command=self.clear_history,
+            bg="#aa0000",
+            fg="white",
+            font=("Arial", 10, "bold"),
+            width=12
+        ).pack(side="left", padx=5)
+
     def show_today_history(self):
-        """Show today's recognitions"""
-        try:
-            today = datetime.now().strftime("%Y-%m-%d")
-            today_records = [r for r in self.recognition_history if r.get('date') == today]
-            
-            # Create window
-            history_window = tk.Toplevel(self.root)
-            history_window.title("Today's Recognitions")
-            history_window.geometry("800x500")
-            history_window.configure(bg="#2b2b2b")
-            
-            # Title
-            title = tk.Label(
-                history_window,
-                text=f"📅 Today's Recognitions ({today})",
-                font=("Arial", 16, "bold"),
-                bg="#2b2b2b",
-                fg="#00ff00"
-            )
-            title.pack(pady=10)
-            
-            # Stats
-            stats = tk.Label(
-                history_window,
-                text=f"Total recognitions today: {len(today_records)}",
-                font=("Arial", 11),
-                bg="#2b2b2b",
-                fg="white"
-            )
-            stats.pack(pady=5)
-            
-            # Create treeview
-            tree_frame = tk.Frame(history_window, bg="#2b2b2b")
-            tree_frame.pack(fill="both", expand=True, padx=10, pady=10)
-            
-            scrollbar = tk.Scrollbar(tree_frame)
-            scrollbar.pack(side="right", fill="y")
-            
-            tree = ttk.Treeview(
-                tree_frame,
-                columns=("Name", "Time", "Confidence"),
-                show="headings",
-                yscrollcommand=scrollbar.set
-            )
-            
-            tree.heading("Name", text="Name")
-            tree.heading("Time", text="Time")
-            tree.heading("Confidence", text="Confidence")
-            
-            tree.column("Name", width=250)
-            tree.column("Time", width=200)
-            tree.column("Confidence", width=150)
-            
-            # Add today's records
-            for record in reversed(today_records):
-                tree.insert("", tk.END, values=(
-                    record.get('name', ''),
-                    record.get('time', ''),
-                    record.get('confidence', '')
-                ))
-            
-            tree.pack(fill="both", expand=True, side="left")
-            scrollbar.config(command=tree.yview)
-            
-        except Exception as e:
-            self.logger.error(f"Error showing today's history: {e}")
-            messagebox.showerror("Error", f"Failed to show today's history: {str(e)}")
-            
+        """Display recognitions recorded today in Indian Standard Time."""
+        today = get_ist_date_string()
+        today_records = [r for r in self.recognition_history if r.get('date') == today]
+
+        window = tk.Toplevel(self.root)
+        window.title(f"Today's Recognitions - {today} IST")
+        window.geometry("800x480")
+        window.configure(bg="#2b2b2b")
+
+        tk.Label(
+            window,
+            text=f"Today's Recognition Events (IST: {today})",
+            font=("Arial", 15, "bold"),
+            bg="#2b2b2b",
+            fg="#00ff00"
+        ).pack(pady=10)
+
+        tk.Label(
+            window,
+            text=f"Total sightings today: {len(today_records)}",
+            font=("Arial", 10),
+            bg="#2b2b2b",
+            fg="white"
+        ).pack(pady=(0, 10))
+
+        tree_frame = tk.Frame(window, bg="#2b2b2b")
+        tree_frame.pack(fill="both", expand=True, padx=10, pady=5)
+
+        scrollbar = tk.Scrollbar(tree_frame)
+        scrollbar.pack(side="right", fill="y")
+
+        tree = ttk.Treeview(
+            tree_frame,
+            columns=("Name", "Time", "Confidence"),
+            show="headings",
+            yscrollcommand=scrollbar.set
+        )
+        tree.heading("Name", text="Identity Name")
+        tree.heading("Time", text="Time (IST)")
+        tree.heading("Confidence", text="Confidence")
+
+        tree.column("Name", width=250)
+        tree.column("Time", width=200)
+        tree.column("Confidence", width=150)
+
+        for record in reversed(today_records):
+            tree.insert("", tk.END, values=(
+                record.get('name', ''),
+                record.get('time', ''),
+                record.get('confidence', '')
+            ))
+
+        tree.pack(fill="both", expand=True, side="left")
+        scrollbar.config(command=tree.yview)
+
+    def show_db_history(self):
+        """Query and display attendance logs stored in SQLite."""
+        window = tk.Toplevel(self.root)
+        window.title("Database Attendance History")
+        window.geometry("820x480")
+        window.configure(bg="#2b2b2b")
+
+        tk.Label(
+            window,
+            text="Relational Database Attendance Logs (SQLite)",
+            font=("Arial", 15, "bold"),
+            bg="#2b2b2b",
+            fg="#00ff00"
+        ).pack(pady=10)
+
+        tree_frame = tk.Frame(window, bg="#2b2b2b")
+        tree_frame.pack(fill="both", expand=True, padx=10, pady=5)
+
+        scrollbar = tk.Scrollbar(tree_frame)
+        scrollbar.pack(side="right", fill="y")
+
+        tree = ttk.Treeview(
+            tree_frame,
+            columns=("Name", "Timestamp", "Confidence"),
+            show="headings",
+            yscrollcommand=scrollbar.set
+        )
+        tree.heading("Name", text="Identity Name")
+        tree.heading("Timestamp", text="Timestamp (IST)")
+        tree.heading("Confidence", text="Confidence Score")
+
+        tree.column("Name", width=220)
+        tree.column("Timestamp", width=300)
+        tree.column("Confidence", width=120)
+
+        history = self.db_manager.get_recognition_history(limit=100)
+        for _, row in history.iterrows():
+            try:
+                conf_val = float(row['confidence']) * 100.0
+                conf_str = f"{conf_val:.1f}%"
+            except Exception:
+                conf_str = str(row['confidence'])
+
+            tree.insert("", tk.END, values=(
+                row['name'],
+                row['timestamp'],
+                conf_str
+            ))
+
+        tree.pack(fill="both", expand=True, side="left")
+        scrollbar.config(command=tree.yview)
+
     def show_gallery(self):
-        """Show known faces gallery"""
-        try:
-            gallery_window = tk.Toplevel(self.root)
-            gallery_window.title("Known Faces Gallery")
-            gallery_window.geometry("700x500")
-            gallery_window.configure(bg="#2b2b2b")
-            
-            canvas = tk.Canvas(gallery_window, bg="#2b2b2b")
-            scrollbar = tk.Scrollbar(gallery_window, orient="vertical", command=canvas.yview)
-            scrollable_frame = tk.Frame(canvas, bg="#2b2b2b")
-            
-            scrollable_frame.bind(
-                "<Configure>",
-                lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
-            )
-            
-            canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
-            canvas.configure(yscrollcommand=scrollbar.set)
-            
-            # Display faces
-            persons = self.db_manager.get_all_persons()
-            
-            for i, person in enumerate(persons):
-                row = i // 3
-                col = i % 3
-                
-                frame = tk.Frame(scrollable_frame, bg="#1e1e1e", relief="raised", bd=2)
-                frame.grid(row=row, column=col, padx=10, pady=10)
-                
-                # Display image
-                image_path = person['image_path']
-                if image_path and os.path.exists(image_path):
-                    img = Image.open(image_path)
-                    img.thumbnail((150, 150))
-                    photo = ImageTk.PhotoImage(img)
-                    label = tk.Label(frame, image=photo, bg="#1e1e1e")
-                    label.image = photo
-                    label.pack(pady=5)
-                
-                tk.Label(
-                    frame,
-                    text=person['name'],
-                    font=("Arial", 11, "bold"),
-                    bg="#1e1e1e",
-                    fg="white"
-                ).pack()
-                
-                tk.Label(
-                    frame,
-                    text=f"Added: {person['added_date'][:10]}",
-                    font=("Arial", 8),
-                    bg="#1e1e1e",
-                    fg="gray"
-                ).pack()
-            
-            canvas.pack(side="left", fill="both", expand=True)
-            scrollbar.pack(side="right", fill="y")
-            
-        except Exception as e:
-            self.logger.error(f"Error showing gallery: {e}")
-            messagebox.showerror("Error", f"Failed to load gallery: {str(e)}")
-    
+        """Display enrolled identity portraits in a scrollable card grid."""
+        window = tk.Toplevel(self.root)
+        window.title("Enrolled Identities Gallery")
+        window.geometry("720x500")
+        window.configure(bg="#2b2b2b")
+
+        canvas = tk.Canvas(window, bg="#2b2b2b", highlightthickness=0)
+        scrollbar = tk.Scrollbar(window, orient="vertical", command=canvas.yview)
+        scrollable_frame = tk.Frame(canvas, bg="#2b2b2b")
+
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        persons = self.db_manager.get_all_persons()
+        if not persons:
+            tk.Label(
+                scrollable_frame,
+                text="No enrolled identities in database.",
+                bg="#2b2b2b",
+                fg="gray",
+                font=("Arial", 12)
+            ).pack(pady=40, padx=40)
+
+        # Store photo references to prevent garbage collection
+        self._gallery_photos = []
+
+        for i, person in enumerate(persons):
+            row = i // 3
+            col = i % 3
+
+            card = tk.Frame(scrollable_frame, bg="#1e1e1e", relief="raised", bd=2)
+            card.grid(row=row, column=col, padx=12, pady=12)
+
+            img_path = person.get('image_path')
+            if img_path and os.path.exists(img_path):
+                try:
+                    with Image.open(img_path) as img:
+                        img.thumbnail((140, 140))
+                        photo = ImageTk.PhotoImage(img)
+                        self._gallery_photos.append(photo)
+
+                    img_lbl = tk.Label(card, image=photo, bg="#1e1e1e")
+                    img_lbl.pack(pady=5, padx=5)
+                except Exception:
+                    pass
+
+            tk.Label(
+                card,
+                text=person['name'],
+                font=("Arial", 10, "bold"),
+                bg="#1e1e1e",
+                fg="white"
+            ).pack()
+
+            date_str = person.get('added_date', '')[:10]
+            tk.Label(
+                card,
+                text=f"Enrolled: {date_str}",
+                font=("Arial", 8),
+                bg="#1e1e1e",
+                fg="#aaaaaa"
+            ).pack(pady=(0, 5))
+
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
     def export_recognition_history(self):
-        """Export recognition history to CSV"""
-        try:
-            file_path = filedialog.asksaveasfilename(
-                defaultextension=".csv",
-                filetypes=[("CSV files", "*.csv")],
-                initialfile=f"recognition_history_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
-            )
-            
-            if file_path:
+        """Export session recognition history to CSV with an IST timestamp."""
+        file_path = filedialog.asksaveasfilename(
+            defaultextension=".csv",
+            filetypes=[("CSV files", "*.csv")],
+            initialfile=f"recognition_history_{get_ist_filename_timestamp()}.csv"
+        )
+        if file_path:
+            try:
                 with open(file_path, 'w', newline='', encoding='utf-8') as f:
                     if self.recognition_history:
-                        fieldnames = self.recognition_history[0].keys()
+                        fieldnames = ['name', 'date', 'time', 'timestamp', 'confidence']
                         writer = csv.DictWriter(f, fieldnames=fieldnames)
                         writer.writeheader()
                         writer.writerows(self.recognition_history)
-                
-                messagebox.showinfo("Success", f"History exported to:\n{file_path}")
-                self.logger.info(f"Exported recognition history to: {file_path}")
-                
-        except Exception as e:
-            self.logger.error(f"Error exporting recognition history: {e}")
-            messagebox.showerror("Error", f"Failed to export history: {str(e)}")
-            
+
+                messagebox.showinfo("Export Successful", f"Records exported to:\n{file_path}")
+                self.logger.info(f"Exported recognition history to {file_path}")
+            except Exception as err:
+                messagebox.showerror("Export Error", f"Failed to export history: {err}")
+
     def export_logs(self):
-        """Export database logs to CSV"""
-        try:
-            file_path = filedialog.asksaveasfilename(
-                defaultextension=".csv",
-                filetypes=[("CSV files", "*.csv")],
-                initialfile=f"database_logs_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
-            )
-            
-            if file_path:
-                exported_path = self.db_manager.export_to_csv(file_path)
-                messagebox.showinfo("Success", f"Database logs exported to:\n{exported_path}")
-                self.logger.info(f"Exported database logs to: {exported_path}")
-                
-        except Exception as e:
-            self.logger.error(f"Error exporting database logs: {e}")
-            messagebox.showerror("Error", f"Failed to export logs: {str(e)}")
-    
-    def clear_history(self):
-        """Clear recognition history"""
-        if messagebox.askyesno("Confirm", "Are you sure you want to clear all recognition history?"):
+        """Export SQLite database logs to CSV."""
+        file_path = filedialog.asksaveasfilename(
+            defaultextension=".csv",
+            filetypes=[("CSV files", "*.csv")],
+            initialfile=f"database_logs_{get_ist_filename_timestamp()}.csv"
+        )
+        if file_path:
             try:
-                self.recognition_history = []
-                self.last_recognized = {}
-                self.save_history()
-                messagebox.showinfo("Success", "Recognition history cleared!")
-                self.logger.info("Recognition history cleared")
-            except Exception as e:
-                self.logger.error(f"Error clearing history: {e}")
-                messagebox.showerror("Error", f"Failed to clear history: {str(e)}")
-    
+                self.db_manager.export_to_csv(file_path)
+                messagebox.showinfo("Export Successful", f"Database logs exported to:\n{file_path}")
+                self.logger.info(f"Exported database logs to {file_path}")
+            except Exception as err:
+                messagebox.showerror("Export Error", f"Failed to export database logs: {err}")
+
+    def clear_history(self):
+        """Clear memory and on-disk recognition history."""
+        if messagebox.askyesno("Confirm Clear", "Are you sure you want to clear all recognition history?"):
+            self.recognition_history.clear()
+            self.last_recognized.clear()
+            self.save_history()
+            messagebox.showinfo("Success", "Recognition history cleared.")
+            self.logger.info("Recognition history cleared")
+
     def toggle_auto_save(self):
-        """Toggle auto-save feature"""
+        """Toggle auto-save state."""
         self.auto_save_enabled = self.auto_save_var.get()
-        status = "enabled" if self.auto_save_enabled else "disabled"
-        self.update_status(f"Auto-save {status}")
-        self.logger.info(f"Auto-save {status}")
-    
+        state = "enabled" if self.auto_save_enabled else "disabled"
+        self.update_status(f"Auto-save {state}")
+
     def set_cooldown(self):
-        """Set recognition cooldown period"""
+        """Configure recognition cooldown period in seconds."""
         cooldown = simpledialog.askinteger(
-            "Set Cooldown",
-            "Enter cooldown period in seconds:",
+            "Configure Cooldown",
+            "Enter cooldown period in seconds (1-60):",
             initialvalue=self.recognition_cooldown,
             minvalue=1,
             maxvalue=60
         )
-        
         if cooldown:
             self.recognition_cooldown = cooldown
-            messagebox.showinfo("Success", f"Cooldown set to {cooldown} seconds")
-            self.logger.info(f"Recognition cooldown set to {cooldown} seconds")
-            
+            messagebox.showinfo("Success", f"Recognition cooldown set to {cooldown} seconds.")
+
     def show_about(self):
-        """Show about dialog"""
-        messagebox.showinfo(
-        "About Face Recognition System",
-        "Face Recognition System v2.0\n\n"  
-        "Developed by: Nilay Naha\n"  
-        "Email: niloynaha2003@gmail.com\n"  
-        "Website: nilay-naha-portfolio.vercel.app\n\n"
-        
-        "Description:\n"
-        "Advanced AI-powered face recognition\n"
-        "with real-time detection and tracking\n\n"
-        
-        "Key Features:\n"
-        "✓ Real-time face detection\n"
-        "✓ 99% accuracy recognition\n"
-        "✓ Confidence scoring\n"
-        "✓ History tracking & export\n"
-        "✓ Database logging\n"
-        "✓ Multi-format support\n\n"
-        
-        "Technologies Used:\n"
-        "• Python 3.10+\n"
-        "• OpenCV 4.12\n"
-        "• dlib 19.24\n"
-        "• face_recognition library\n"
-        "• Tkinter (GUI)\n"
-        "• SQLite Database\n"
-        "• NumPy & Pillow\n\n"
-        
-        "License: MIT\n"
-        "© 2025 - 2030"
+        """Display about information."""
+        about_text = (
+            "Face Recognition System v2.0\n"
+            "Indian Standard Time (IST) Edition\n\n"
+            "Key Capabilities:\n"
+            "  [+] Real-time multi-face detection (HOG / Haar)\n"
+            "  [+] 128-dimensional deep metric embeddings\n"
+            "  [+] Color-coded confidence feedback\n"
+            "  [+] Relational SQLite database attendance logging\n"
+            "  [+] Thread-safe Tkinter desktop architecture\n"
+            "  [+] 2026 Anti-Spoofing and Security Architecture\n\n"
+            "Developer: Nilay Naha\n"
+            "License: MIT License"
         )
-        
-    def update_status(self, message):
-        """Update status bar"""
+        messagebox.showinfo("About Face Recognition System", about_text)
+
+    def update_status(self, message: str):
+        """Update bottom status bar message."""
         self.status_bar.config(text=f"  {message}")
-        
+
     def on_closing(self):
-        """Handle window closing"""
-        if messagebox.askyesno("Quit", "Are you sure you want to quit?"):
-            # Save history before closing
-            if self.recognition_history:
+        """Gracefully release camera and close application window."""
+        if messagebox.askyesno("Quit Application", "Are you sure you want to quit?"):
+            if self.recognition_history and self.auto_save_enabled:
                 self.save_history()
-            
             self.stop_camera()
-            self.logger.info("Application closed")
+            self.logger.info("Application terminated cleanly")
             self.root.destroy()
-            
+
     def run(self):
-        """Run the GUI application"""
+        """Launch the Tkinter main event loop."""
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
         self.root.mainloop()
 
 def main():
-    """Main entry point for GUI"""
+    """Main function entry point for GUI."""
     app = FaceRecognitionGUI()
     app.run()
 

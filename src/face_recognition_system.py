@@ -1,428 +1,409 @@
-import cv2
-import face_recognition
-import numpy as np
+"""
+Primary Face Recognition System Module
+
+This module coordinates the complete computer vision pipeline:
+1. Ingesting and decoding reference photos from the known_faces/ folder.
+2. Generating and caching 128-dimensional biometric embeddings.
+3. Capturing real-time video feeds from camera devices.
+4. Downscaling frames for accelerated inference.
+5. Computing Euclidean face distance and mapping distance to confidence percentages.
+6. Drawing bounding overlays with confidence scores and telemetry.
+7. Managing facial additions, removals, and frame captures with IST timestamps.
+"""
+
 import os
-from datetime import datetime
+import re
+import cv2
 import pickle
+import numpy as np
 from pathlib import Path
 from PIL import Image
+from typing import Tuple, List, Optional
+from src.utils import get_ist_filename_timestamp, format_ist_timestamp
+
+def sanitize_identity_name(name: str) -> str:
+    """
+    Sanitize a human identity name to prevent path traversal and filesystem errors.
+    Removes dangerous characters like '..', '/', '\\', and control characters.
+    """
+    # Allow alphanumeric, spaces, hyphens, and underscores
+    clean = re.sub(r'[^a-zA-Z0-9_\- ]', '', name.strip())
+    # Collapse multiple spaces or underscores
+    clean = re.sub(r'\s+', ' ', clean)
+    return clean
 
 class FaceRecognitionSystem:
+    """
+    Core facial recognition controller and video processing engine.
+    """
+
     def __init__(self):
-        self.known_face_encodings = []
-        self.known_face_names = []
-        self.face_locations = []
-        self.face_encodings = []
-        self.face_names = []
-        self.face_confidences = []  # NEW: Store confidence scores
-        
-    def load_known_faces(self, images_folder="known_faces"):
-        """Load images from folder and encode faces - supports all image formats"""
-        if not os.path.exists(images_folder):
-            os.makedirs(images_folder)
-            print(f"Created folder: {images_folder}")
-            print("Please add images in format: person_name.jpg")
+        """Initialize empty collections for known faces and detection telemetry."""
+        self.known_face_encodings: List[np.ndarray] = []
+        self.known_face_names: List[str] = []
+        self.face_locations: List[Tuple[int, int, int, int]] = []
+        self.face_encodings: List[np.ndarray] = []
+        self.face_names: List[str] = []
+        self.face_confidences: List[float] = []
+
+    def load_known_faces(self, images_folder: str = "known_faces") -> bool:
+        """
+        Load reference portrait images from a directory and compute their 128-d embeddings.
+        Supports standard formats: JPEG, PNG, WEBP, BMP, TIFF, GIF.
+
+        Args:
+            images_folder (str): Directory containing labeled reference photos.
+
+        Returns:
+            bool: True if one or more valid face encodings were loaded; False otherwise.
+        """
+        import face_recognition
+
+        folder_path = Path(images_folder)
+        if not folder_path.exists():
+            folder_path.mkdir(parents=True, exist_ok=True)
+            print(f"[INFO] Created directory: {images_folder}")
+            print("[INFO] Add images in format: Person_Name.jpg")
             return False
-        
-        image_files = [f for f in os.listdir(images_folder) 
-                      if f.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.tiff', '.webp', '.bmp'))]
-        
+
+        valid_exts = ('.png', '.jpg', '.jpeg', '.gif', '.tiff', '.webp', '.bmp')
+        image_files = [f for f in os.listdir(images_folder) if f.lower().endswith(valid_exts)]
+
         if not image_files:
-            print(f"No images found in {images_folder}")
+            print(f"[WARNING] No reference images found in: {images_folder}")
             return False
-        
-        print("Loading known faces...")
-        
+
+        print("[INFO] Loading enrolled face images...")
+        self.known_face_encodings.clear()
+        self.known_face_names.clear()
+
         for filename in image_files:
             try:
-                image_path = os.path.join(images_folder, filename)
-                
-                # Load image using PIL (supports all formats)
-                pil_image = Image.open(image_path)
-                
-                # Convert to RGB (handles PNG with alpha, GIF, etc.)
-                if pil_image.mode != 'RGB':
-                    pil_image = pil_image.convert('RGB')
-                
-                # Convert PIL image to numpy array with explicit dtype=np.uint8
-                image_array = np.array(pil_image, dtype=np.uint8)
-                
-                # Get face encodings
-                face_encodings = face_recognition.face_encodings(image_array, num_jitters=1)
-                
-                if face_encodings:
-                    face_encoding = face_encodings[0]
-                    name = os.path.splitext(filename)[0].replace('_', ' ')
+                filepath = os.path.join(images_folder, filename)
+                # Load image via PIL to safely handle various color formats and alpha channels
+                with Image.open(filepath) as pil_image:
+                    rgb_image = pil_image.convert('RGB')
+                    image_array = np.array(rgb_image, dtype=np.uint8)
+
+                # Generate 128-d encoding (num_jitters=1 provides fast single-pass encoding)
+                encodings = face_recognition.face_encodings(image_array, num_jitters=1)
+
+                if encodings:
+                    face_encoding = encodings[0]
+                    # Derive clean display name from filename (e.g. 'John_Doe.jpg' -> 'John Doe')
+                    raw_stem = os.path.splitext(filename)[0]
+                    name = raw_stem.replace('_', ' ').strip()
                     
                     self.known_face_encodings.append(face_encoding)
                     self.known_face_names.append(name)
-                    print(f"✅ Loaded: {name}")
+                    print(f"[OK] Enrolled: {name}")
                 else:
-                    print(f"⚠️  No face found in {filename}")
-            except Exception as e:
-                print(f"❌ Error loading {filename}: {str(e)}")
-        
-        print(f"\n📊 Total loaded: {len(self.known_face_names)} faces")
+                    print(f"[WARNING] No face detected in: {filename}")
+            except Exception as err:
+                print(f"[ERROR] Failed to load {filename}: {err}")
+
+        print(f"\n[INFO] Total enrolled identities: {len(self.known_face_names)}")
         return len(self.known_face_names) > 0
-    
-    def save_encodings(self, filename="face_encodings.pkl"):
-        """Save face encodings to file"""
+
+    def save_encodings(self, filename: str = "data/face_encodings.pkl"):
+        """
+        Serialize enrolled identities and embeddings to disk for faster subsequent loads.
+
+        Args:
+            filename (str): Destination cache file path.
+        """
+        Path(filename).parent.mkdir(parents=True, exist_ok=True)
         data = {
             "names": self.known_face_names,
             "encodings": self.known_face_encodings
         }
         with open(filename, 'wb') as f:
             pickle.dump(data, f)
-        print(f"Encodings saved to {filename}")
-    
-    def load_encodings(self, filename="face_encodings.pkl"):
-        """Load face encodings from file"""
+        print(f"[INFO] Face encodings saved to: {filename}")
+
+    def load_encodings(self, filename: str = "data/face_encodings.pkl") -> bool:
+        """
+        Load pre-computed face embeddings from cache.
+
+        Args:
+            filename (str): Path to stored encodings file.
+
+        Returns:
+            bool: True if loaded successfully; False otherwise.
+        """
         if os.path.exists(filename):
             try:
                 with open(filename, 'rb') as f:
                     data = pickle.load(f)
-                self.known_face_names = data["names"]
-                self.known_face_encodings = data["encodings"]
-                print(f"Loaded {len(self.known_face_names)} face encodings from {filename}")
+                self.known_face_names = data.get("names", [])
+                self.known_face_encodings = data.get("encodings", [])
+                print(f"[INFO] Loaded {len(self.known_face_names)} cached encodings from {filename}")
                 return True
-            except Exception as e:
-                print(f"Error loading encodings: {e}")
+            except Exception as err:
+                print(f"[WARNING] Could not load cached encodings: {err}")
                 return False
         return False
-    
-    def recognize_face(self, face_encoding):
+
+    def recognize_face(self, face_encoding: np.ndarray, tolerance: float = 0.6) -> Tuple[str, float]:
         """
-        Recognize a single face and return name with confidence score
-        Returns: (name, confidence)
+        Identify a face encoding by calculating Euclidean distances to all known identities.
+
+        Beginner Concept:
+        - Euclidean Distance: Measures distance between two vectors.
+          Distance 0.0 means identical. Distance > 0.6 means distinct faces.
+        - Confidence Score: Inverted percentage scale:
+          Confidence = max(0.0, (1.0 - distance)) * 100
+
+        Args:
+            face_encoding (np.ndarray): 128-d vector of newly detected face.
+            tolerance (float): Match threshold. Default 0.6.
+
+        Returns:
+            tuple[str, float]: (matched_person_name, confidence_percentage).
         """
+        import face_recognition
+
         name = "Unknown"
         confidence = 0.0
-        
-        if len(self.known_face_encodings) > 0:
-            # Calculate face distances
-            face_distances = face_recognition.face_distance(
-                self.known_face_encodings, 
-                face_encoding
-            )
-            
-            # Find the best match
-            best_match_index = np.argmin(face_distances)
-            distance = face_distances[best_match_index]
-            
-            # Convert distance to confidence percentage
-            # Distance of 0.0 = 100% confidence, Distance of 1.0 = 0% confidence
-            confidence = max(0.0, (1.0 - distance)) * 100
-            
-            # Check if match is good enough (distance < 0.6 = confidence > 40%)
-            if distance < 0.6:
-                name = self.known_face_names[best_match_index]
+
+        if self.known_face_encodings:
+            # Compute Euclidean distances against all enrolled identities
+            distances = face_recognition.face_distance(self.known_face_encodings, face_encoding)
+            best_match_idx = int(np.argmin(distances))
+            min_distance = float(distances[best_match_idx])
+
+            # Convert distance into an intuitive confidence percentage
+            confidence = max(0.0, (1.0 - min_distance)) * 100.0
+
+            # Stricter verification against tolerance
+            if min_distance < tolerance:
+                name = self.known_face_names[best_match_idx]
             else:
                 name = "Unknown"
                 confidence = 0.0
-        
+
         return name, confidence
-    
+
     def run_recognition(self, video_source=0):
-        """Run face recognition on video stream - Optimized & Working"""
+        """
+        Run the interactive command-line recognition loop on a video stream.
+
+        Args:
+            video_source: Camera index (0) or path to video file.
+        """
+        import face_recognition
+
         video_capture = cv2.VideoCapture(video_source)
-        
-        # Set camera properties
         video_capture.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
         video_capture.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
         video_capture.set(cv2.CAP_PROP_FPS, 30)
         video_capture.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-        
+
         if not video_capture.isOpened():
-            print("Error: Could not open video source")
+            print(f"[ERROR] Could not open video source: {video_source}")
             return
-        
-        print("\n🎥 Camera started!")
-        print("\n⌨️  Controls:")
-        print("  - Press 'q' to quit")
-        print("  - Press 's' to save screenshot")
-        print("  - Press 'c' to capture and add new face\n")
-        
-        # Process every 3rd frame (good balance)
+
+        print("\n[START] Camera stream initiated.")
+        print("Keyboard Controls:")
+        print("  - 'Q': Quit")
+        print("  - 'S': Save screenshot (IST timestamped)")
+        print("  - 'C': Enroll new face live\n")
+
         frame_count = 0
-        
+
         while True:
             ret, frame = video_capture.read()
             if not ret:
-                print("Failed to grab frame")
+                print("[ERROR] Failed to read video frame from camera.")
                 break
-            
+
             frame_count += 1
-            
-            # Process every 3rd frame for face recognition
+
+            # Performance Optimization:
+            # Process recognition only on every 3rd frame to conserve CPU
             if frame_count % 3 == 0:
-                # Resize to 1/4 size for faster processing
+                # Downscale frame to 25% (1/4 size) for rapid inference
                 small_frame = cv2.resize(frame, (0, 0), fx=0.25, fy=0.25)
-                
-                # Convert BGR to RGB
                 rgb_small_frame = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
-                
-                # Find faces - using HOG model with 1 upsample
+
+                # Locate faces in downscaled frame
                 self.face_locations = face_recognition.face_locations(
                     rgb_small_frame, 
-                    number_of_times_to_upsample=1,
+                    number_of_times_to_upsample=1, 
                     model="hog"
                 )
-                
-                # Get face encodings
+
                 if self.face_locations:
                     self.face_encodings = face_recognition.face_encodings(
                         rgb_small_frame, 
-                        self.face_locations,
+                        self.face_locations, 
                         num_jitters=1
                     )
-                    
-                    # Recognize each face with confidence
                     self.face_names = []
                     self.face_confidences = []
-                    
-                    for face_encoding in self.face_encodings:
-                        name, confidence = self.recognize_face(face_encoding)
+
+                    for enc in self.face_encodings:
+                        name, conf = self.recognize_face(enc)
                         self.face_names.append(name)
-                        self.face_confidences.append(confidence)
+                        self.face_confidences.append(conf)
                 else:
                     self.face_encodings = []
                     self.face_names = []
                     self.face_confidences = []
-            
-            # Draw results on every frame
+
+            # Draw visual bounding boxes and HUD stats on full-sized frame
             self.draw_results(frame)
-            
-            # Display frame
-            cv2.imshow('Face Recognition System - Press Q to quit', frame)
-            
-            # Handle keyboard input
+            cv2.imshow("Face Recognition System (CLI Mode) - Press Q to Quit", frame)
+
             key = cv2.waitKey(1) & 0xFF
-            if key == ord('q'):
+            if key == ord('q') or key == 27:  # 'Q' or ESC
                 break
             elif key == ord('s'):
                 self.save_frame(frame)
             elif key == ord('c'):
                 self.capture_new_face(frame)
-        
+
         video_capture.release()
         cv2.destroyAllWindows()
-        print("\n👋 Camera closed")
-    
-    def draw_results(self, frame):
-        """Draw bounding boxes, names, and confidence scores on frame"""
+        print("\n[STOP] Camera closed.")
+
+    def draw_results(self, frame: np.ndarray):
+        """
+        Render color-coded bounding boxes and confidence readouts onto a frame.
+
+        Color Code:
+        - Green (High confidence: >= 70%)
+        - Orange (Medium confidence: 50% - 69%)
+        - Yellow (Low confidence: < 50%)
+        - Red (Unknown / Unregistered)
+        """
         for i, ((top, right, bottom, left), name) in enumerate(zip(self.face_locations, self.face_names)):
-            # Scale back up face locations
+            # Upscale coordinates by 4 to map back from 0.25 downscaled frame
             top *= 4
             right *= 4
             bottom *= 4
             left *= 4
-            
-            # Get confidence for this face
-            confidence = self.face_confidences[i] if i < len(self.face_confidences) else 0
-            
-            # Choose color based on confidence
+
+            confidence = self.face_confidences[i] if i < len(self.face_confidences) else 0.0
+
             if name == "Unknown":
-                color = (0, 0, 255)  # Red
-            elif confidence >= 70:
-                color = (0, 255, 0)  # Green - High confidence
-            elif confidence >= 50:
-                color = (0, 165, 255)  # Orange - Medium confidence
+                color = (0, 0, 255)       # Red
+            elif confidence >= 70.0:
+                color = (0, 255, 0)       # Green
+            elif confidence >= 50.0:
+                color = (0, 165, 255)     # Orange
             else:
-                color = (0, 255, 255)  # Yellow - Low confidence
-            
-            # Draw rectangle around face
+                color = (0, 255, 255)     # Yellow
+
+            # Draw bounding rectangle around face
             cv2.rectangle(frame, (left, top), (right, bottom), color, 2)
-            
-            # Draw label background (taller to fit confidence)
-            cv2.rectangle(frame, (left, bottom - 55), (right, bottom), color, cv2.FILLED)
-            
-            # Draw name
+
+            # Draw label banner
+            cv2.rectangle(frame, (left, bottom - 50), (right, bottom), color, cv2.FILLED)
             font = cv2.FONT_HERSHEY_DUPLEX
-            cv2.putText(frame, name, (left + 6, bottom - 35), 
-                       font, 0.6, (255, 255, 255), 1)
-            
-            # Draw confidence score
+            cv2.putText(frame, name, (left + 6, bottom - 30), font, 0.6, (255, 255, 255), 1)
+
             if name != "Unknown":
-                confidence_text = f"{confidence:.1f}%"
-                cv2.putText(frame, confidence_text, (left + 6, bottom - 10), 
-                           font, 0.5, (255, 255, 255), 1)
-        
-        # Display stats with average confidence
+                conf_text = f"{confidence:.1f}%"
+                cv2.putText(frame, conf_text, (left + 6, bottom - 10), font, 0.5, (255, 255, 255), 1)
+
+        # Draw HUD text telemetry in top-left corner
         cv2.putText(frame, f"Faces: {len(self.face_locations)}", 
-                   (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-        cv2.putText(frame, f"Known: {len(self.known_face_names)}", 
-                   (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-        
-        # Show average confidence if faces detected
-        if self.face_confidences and any(c > 0 for c in self.face_confidences):
-            valid_confidences = [c for c in self.face_confidences if c > 0]
-            avg_confidence = sum(valid_confidences) / len(valid_confidences)
-            cv2.putText(frame, f"Avg Confidence: {avg_confidence:.1f}%", 
-                       (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-    
-    def save_frame(self, frame):
-        """Save current frame to file"""
-        os.makedirs("captured_images", exist_ok=True)
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"captured_images/capture_{timestamp}.jpg"
-        cv2.imwrite(filename, frame)
-        print(f"\n📸 Frame saved as {filename}")
-    
-    def capture_new_face(self, frame):
-        """Capture and add new face to known faces"""
-        # Detect faces in current frame
+                    (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+        cv2.putText(frame, f"Enrolled: {len(self.known_face_names)}", 
+                    (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+
+        # Average confidence display
+        valid_confs = [c for c in self.face_confidences if c > 0.0]
+        if valid_confs:
+            avg_conf = sum(valid_confs) / float(len(valid_confs))
+            cv2.putText(frame, f"Avg Confidence: {avg_conf:.1f}%", 
+                        (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+
+    def save_frame(self, frame: np.ndarray):
+        """Save a snapshot of the current frame with an IST timestamp."""
+        directory = "captured_images"
+        os.makedirs(directory, exist_ok=True)
+        timestamp = get_ist_filename_timestamp()
+        filepath = os.path.join(directory, f"capture_{timestamp}.jpg")
+        cv2.imwrite(filepath, frame)
+        print(f"[CAPTURE] Snapshot saved: {filepath}")
+
+    def capture_new_face(self, frame: np.ndarray):
+        """Enroll a new identity directly from the live video feed."""
+        import face_recognition
+
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         temp_locations = face_recognition.face_locations(rgb_frame)
-        
-        if len(temp_locations) == 0:
-            print("\n❌ No face detected in frame")
+
+        if not temp_locations:
+            print("[WARNING] No face detected in frame. Please reposition.")
             return
-        
+
         if len(temp_locations) > 1:
-            print("\n⚠️  Multiple faces detected. Please ensure only one face is visible")
+            print("[WARNING] Multiple faces detected. Ensure only one person is in view.")
             return
-        
-        print("\n📝 Enter name for the detected face: ", end='', flush=True)
-        name = input().strip()
-        
-        if name:
-            # Save image
-            safe_name = name.replace(" ", "_")
-            filename = f"known_faces/{safe_name}.jpg"
-            os.makedirs("known_faces", exist_ok=True)
-            
-            # Save using PIL
-            pil_image = Image.fromarray(rgb_frame.astype(np.uint8))
-            pil_image.save(filename, 'JPEG', quality=95)
-            
-            # Get encoding
-            temp_encodings = face_recognition.face_encodings(rgb_frame, temp_locations, num_jitters=1)
-            
-            if temp_encodings:
-                # Add to known faces
-                self.known_face_encodings.append(temp_encodings[0])
-                self.known_face_names.append(name)
-                
-                print(f"✅ Added {name} to known faces\n")
-                self.save_encodings()
-            else:
-                print(f"❌ Could not encode face\n")
-        else:
-            print("❌ Name cannot be empty\n")
-    
-    def add_face_from_frame(self, frame, name):
-        """Add face from a given frame"""
-        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        face_encodings = face_recognition.face_encodings(rgb_frame, num_jitters=1)
-        
-        if face_encodings:
-            safe_name = name.replace(" ", "_")
-            filename = f"known_faces/{safe_name}.jpg"
-            os.makedirs("known_faces", exist_ok=True)
-            
-            # Save using PIL
-            pil_image = Image.fromarray(rgb_frame.astype(np.uint8))
-            pil_image.save(filename, 'JPEG', quality=95)
-            
-            self.known_face_encodings.append(face_encodings[0])
-            self.known_face_names.append(name)
+
+        print("\nEnter name for the detected face: ", end='', flush=True)
+        raw_name = input().strip()
+        clean_name = sanitize_identity_name(raw_name)
+
+        if not clean_name:
+            print("[ERROR] Invalid name. Only alphanumeric characters are allowed.")
+            return
+
+        safe_filename = clean_name.replace(" ", "_")
+        target_path = os.path.join("known_faces", f"{safe_filename}.jpg")
+        os.makedirs("known_faces", exist_ok=True)
+
+        # Save reference portrait
+        pil_img = Image.fromarray(rgb_frame.astype(np.uint8))
+        pil_img.save(target_path, 'JPEG', quality=95)
+
+        # Compute embedding and enroll
+        encodings = face_recognition.face_encodings(rgb_frame, temp_locations, num_jitters=1)
+        if encodings:
+            self.known_face_encodings.append(encodings[0])
+            self.known_face_names.append(clean_name)
             self.save_encodings()
-            return True
-        return False
-    
-    def add_face_from_image(self, image_path, name):
-        """Add face from image file"""
-        try:
-            # Load using PIL
-            pil_image = Image.open(image_path)
-            if pil_image.mode != 'RGB':
-                pil_image = pil_image.convert('RGB')
-            
-            # Convert to numpy array
-            image_array = np.array(pil_image, dtype=np.uint8)
-            face_encodings = face_recognition.face_encodings(image_array, num_jitters=1)
-            
-            if face_encodings:
-                safe_name = name.replace(" ", "_")
-                filename = f"known_faces/{safe_name}.jpg"
-                os.makedirs("known_faces", exist_ok=True)
-                
-                # Save using PIL
-                pil_image.save(filename, 'JPEG', quality=95)
-                
-                self.known_face_encodings.append(face_encodings[0])
-                self.known_face_names.append(name)
-                self.save_encodings()
-                return True
-        except Exception as e:
-            print(f"Error adding face: {e}")
-        return False
-    
-    def remove_face(self, name):
-        """Remove a face from known faces"""
-        if name in self.known_face_names:
-            idx = self.known_face_names.index(name)
+            print(f"[SUCCESS] Enrolled {clean_name} into known faces directory.")
+        else:
+            print("[ERROR] Could not compute face encoding.")
+
+    def remove_face(self, name: str) -> bool:
+        """
+        Safely remove an identity and their reference photos.
+        Sanitizes name parameter to prevent path traversal vulnerabilities.
+
+        Args:
+            name (str): Person name to delete.
+
+        Returns:
+            bool: True if identity was located and removed; False otherwise.
+        """
+        clean_name = sanitize_identity_name(name)
+        if clean_name in self.known_face_names:
+            idx = self.known_face_names.index(clean_name)
             del self.known_face_names[idx]
             del self.known_face_encodings[idx]
-            
-            # Try both formats
-            safe_name = name.replace(" ", "_")
-            image_path1 = f"known_faces/{name}.jpg"
-            image_path2 = f"known_faces/{safe_name}.jpg"
-            
-            if os.path.exists(image_path1):
-                os.remove(image_path1)
-            if os.path.exists(image_path2):
-                os.remove(image_path2)
-            
+
+            # Secure file deletion constrained to known_faces folder
+            base_dir = Path("known_faces").resolve()
+            safe_filename = clean_name.replace(" ", "_")
+
+            for candidate in [f"{clean_name}.jpg", f"{safe_filename}.jpg"]:
+                cand_path = (base_dir / candidate).resolve()
+                # Verify cand_path is strictly within base_dir (prevents traversal)
+                if cand_path.is_relative_to(base_dir) and cand_path.exists():
+                    try:
+                        cand_path.unlink()
+                    except Exception as err:
+                        print(f"[WARNING] Could not delete image file {cand_path}: {err}")
+
             self.save_encodings()
             return True
         return False
-    
-    def get_known_faces(self):
-        """Get list of known face names"""
-        return self.known_face_names
-    
-    def process_frame(self, frame):
-        """Process a single frame and return results with confidence"""
-        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        face_locations = face_recognition.face_locations(rgb_frame, model="hog")
-        face_encodings = face_recognition.face_encodings(rgb_frame, face_locations, num_jitters=1)
-        
-        faces_info = []
-        
-        for (top, right, bottom, left), face_encoding in zip(face_locations, face_encodings):
-            name, confidence = self.recognize_face(face_encoding)
-            
-            # Determine color based on confidence
-            if name == "Unknown":
-                color = (0, 0, 255)
-            elif confidence >= 70:
-                color = (0, 255, 0)
-            elif confidence >= 50:
-                color = (0, 165, 255)
-            else:
-                color = (0, 255, 255)
-            
-            cv2.rectangle(frame, (left, top), (right, bottom), color, 2)
-            cv2.rectangle(frame, (left, bottom - 55), (right, bottom), color, cv2.FILLED)
-            cv2.putText(frame, name, (left + 6, bottom - 35), 
-                       cv2.FONT_HERSHEY_DUPLEX, 0.6, (255, 255, 255), 1)
-            
-            if name != "Unknown":
-                confidence_text = f"{confidence:.1f}%"
-                cv2.putText(frame, confidence_text, (left + 6, bottom - 10), 
-                           cv2.FONT_HERSHEY_DUPLEX, 0.5, (255, 255, 255), 1)
-            
-            faces_info.append({
-                'name': name,
-                'confidence': confidence,
-                'location': (top, right, bottom, left)
-            })
-        
-        info = {
-            'face_count': len(face_locations),
-            'faces': faces_info
-        }
-        
-        return frame, info
+
+    def get_known_faces(self) -> List[str]:
+        """Return a copy of the list of currently registered identity names."""
+        return list(self.known_face_names)

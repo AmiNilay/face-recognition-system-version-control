@@ -1,0 +1,31 @@
+# ==============================================================================
+# Face Recognition System Configuration
+# ==============================================================================
+
+camera:
+  device: 0               # Camera index (0 for default webcam, or path/URL to video file/RTSP)
+  width: 640              # Capture frame width
+  height: 480             # Capture frame height
+  fps: 30                 # Target capture frame rate
+  buffer_size: 1          # Capture buffer size to minimize video latency
+
+face_recognition:
+  tolerance: 0.6          # Distance threshold for face match (lower = stricter, higher = looser)
+  model: "hog"            # Detection model: 'hog' (fast CPU) or 'cnn' (GPU/higher accuracy)
+  encoding_model: "large" # Landmark model: 'large' (68 points) or 'small' (5 points)
+  process_interval: 3     # Process face recognition every N frames for CPU performance optimization
+  upsample: 1             # Number of times to upsample image for small face detection
+
+storage:
+  known_faces_dir: "known_faces"
+  captured_images_dir: "captured_images"
+  encodings_file: "data/face_encodings.pkl"
+  database_file: "data/database.db"
+  history_file: "data/recognition_history.csv"
+
+ui:
+  window_name: "Face Recognition System"
+  show_fps: true
+  show_confidence: true
+  theme: "dark"
+  cooldown_seconds: 5     # Seconds between logging duplicate recognition for the same person
