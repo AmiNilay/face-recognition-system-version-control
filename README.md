@@ -237,4 +237,4 @@ face-recognition-system-version-control/
 * 🚀 **Installer Overhaul:** Updated `INSTALL.bat` to safely handle system site-packages and dependency installation without compilation crashes.
 
 ---
-<p align="center"><b>Maintained by Niloy & Antigravity AI Engineering</b></p>
+<p align="center"><b>Maintained by Nilay & Antigravity AI Engineering</b></p>

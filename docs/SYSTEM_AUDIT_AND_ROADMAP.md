@@ -151,7 +151,7 @@ All suggested features below use **100% free, open-source, locally run tools** (
 | **Fast Vector Search (FAISS / Annoy)** | ⚡ Scalability | `faiss-cpu` / `scipy.spatial` cKDTree | Sub-millisecond face lookup across thousands of registered identities. |
 | **Modern Dark/Light Glass UI** | 🎨 UI/UX | `customtkinter` or Polished ttk | Sleek, modern 2026 interface replacing legacy raw Tkinter widgets. |
 | **Smart Attendance & Shift Rules** | 📊 Utility | Pure Python / SQLite | Calculates punch-in/out, late arrivals, duplicate suppression, and Excel reports. |
-| **Audio Voice Feedback** | 🔊 Standout | `pyttsx3` (Offline TTS) | Offline synthesized greeting: *"Welcome Niloy, access granted."* |
+| **Audio Voice Feedback** | Standout Feature | `pyttsx3` (Offline TTS) | Offline synthesized greeting: *"Welcome Nilay, access granted."* |
 
 ---
 
@@ -215,6 +215,7 @@ Every modification, security patch, and feature addition must be logged here wit
 | **2026-11-08 20:17:00 +05:30** | Phase 1 | CLN-01 | Codebase Cleanup & Fixes | Purged empty dead files (`setup.py`, `simple_face_detection.py`, `config/settings.json`); populated `config/config.yaml`; created comprehensive docs (`docs/API.md`, `docs/USER_GUIDE.md`); authored and verified unit test suite (`tests/test_detection.py`, `tests/test_recognition.py` - all 7 passing); eliminated duplicate dead imports in `add_faces.py`; fixed destructive file deletion in `fix_images.py`; fixed `build_exe.bat` missing icon failure; added crash-proof fallback in `DatabaseManager` for NumPy/Pandas ABI resilience. | Antigravity AI |
 | **2026-11-08 20:24:00 +05:30** | Phase 1 | REF-01 | IST & Code Standardization | Standardized entire codebase to Indian Standard Time (IST, UTC+05:30) with timezone-aware datetime helpers across logging, SQLite database, file snapshots, and GUI displays; purged 100% of emojis from all Python source files; added detailed educational comments and docstrings for beginners; refactored `gui/app.py` with thread-safe `root.after()` UI dispatch; added input sanitization in `FaceRecognitionSystem` against path traversal. | Antigravity AI |
 | **2026-11-08 20:27:30 +05:30** | Phase 1 | GIT-02 | GitHub Repository Push | Initialized Git repository, connected remote `origin`, purged legacy committed `.venv/` binaries (1.7M lines deleted) to prevent repo bloat, committed all clean code modernization changes on top of `origin/main`, and successfully pushed to `https://github.com/AmiNilay/face-recognition-system-version-control.git`. | Antigravity AI |
+| **2026-11-08 20:31:30 +05:30** | Phase 1 | COR-01 | Attribution Correction | Corrected name spelling to 'Nilay' across `README.md`, `docs/SYSTEM_AUDIT_AND_ROADMAP.md`, and system documentation. | Antigravity AI |
 
 ---
 
