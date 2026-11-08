@@ -294,3 +294,4 @@ const currentYearEl = document.getElementById('current-year');
 if (currentYearEl) {
   currentYearEl.textContent = new Date().getFullYear();
 }
+
