@@ -18,10 +18,12 @@ from PIL import Image, ImageTk
 import threading
 import os
 import sys
+import time
 from pathlib import Path
 from datetime import datetime
 import csv
 import logging
+import numpy as np
 from typing import Optional, List, Dict, Any
 
 # Ensure parent directory is in Python module search path
@@ -60,10 +62,14 @@ class FaceRecognitionGUI:
         self.db_manager = DatabaseManager()
         self.config = load_config()
 
-        # Camera streaming state
-        self.cap: Optional[cv2.VideoCapture] = None
+        # Camera streaming state & thread-safe synchronization
         self.is_running: bool = False
         self.video_thread: Optional[threading.Thread] = None
+        self.frame_lock: threading.Lock = threading.Lock()
+        self.latest_display_frame: Optional[np.ndarray] = None
+        self.latest_raw_frame: Optional[np.ndarray] = None
+        self.latest_telemetry: Dict[str, Any] = {}
+        self.current_photo: Optional[ImageTk.PhotoImage] = None
 
         # Recognition tracking & cooldown management
         self.recognition_history: List[Dict[str, str]] = []
@@ -357,98 +363,159 @@ class FaceRecognitionGUI:
     # --------------------------------------------------------------------------
     # 3. CAMERA & THREAD-SAFE VIDEO PIPELINE
     # --------------------------------------------------------------------------
-    def start_camera(self):
-        """Initiate video capture device and spawn worker background thread."""
+    def _open_camera(self, device_index: int) -> Optional[cv2.VideoCapture]:
+        """
+        Helper method to open a video capture device reliably across platforms.
+        On Windows, attempts cv2.CAP_DSHOW first to avoid MSMF threading deadlocks.
+        """
+        if sys.platform.startswith("win"):
+            try:
+                cap = cv2.VideoCapture(device_index, cv2.CAP_DSHOW)
+                if cap.isOpened():
+                    return cap
+                cap.release()
+            except Exception as dshow_err:
+                self.logger.debug(f"DirectShow open attempt: {dshow_err}")
+
         try:
-            device_index = int(self.config.get('camera', {}).get('device', 0))
-            self.cap = cv2.VideoCapture(device_index)
+            cap = cv2.VideoCapture(device_index)
+            if cap.isOpened():
+                return cap
+            cap.release()
+        except Exception as cap_err:
+            self.logger.error(f"Error opening camera with default backend: {cap_err}")
 
-            self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-            self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-            self.cap.set(cv2.CAP_PROP_FPS, 30)
-            self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        return None
 
-            if not self.cap.isOpened():
-                messagebox.showerror("Camera Error", f"Could not access camera device {device_index}!")
-                return
+    def start_camera(self):
+        """Initiate video capture in a dedicated background worker thread."""
+        if self.is_running:
+            return
 
-            self.is_running = True
-            self.start_btn.config(state="disabled")
-            self.stop_btn.config(state="normal")
-            self.capture_btn.config(state="normal")
+        self.is_running = True
+        self.start_btn.config(state="disabled")
+        self.stop_btn.config(state="normal")
+        self.capture_btn.config(state="normal")
+        self.update_status("Connecting to camera device...")
 
-            # Spawn video capture loop in background daemon thread
-            self.video_thread = threading.Thread(target=self.video_loop, daemon=True)
-            self.video_thread.start()
+        # Spawn video capture loop in background daemon thread
+        # Crucial Rule: cv2.VideoCapture is opened, read, and released entirely inside the worker thread
+        self.video_thread = threading.Thread(target=self.video_loop, daemon=True)
+        self.video_thread.start()
 
-            self.update_status("Camera stream active")
-            self.logger.info("Camera started")
-
-        except Exception as err:
-            self.logger.error(f"Error starting camera: {err}")
-            messagebox.showerror("Error", f"Failed to start camera: {err}")
+        # Start thread-safe UI update polling loop on the main Tkinter thread
+        self.root.after(30, self._render_ui_loop)
 
     def stop_camera(self):
-        """Gracefully release camera resources and restore UI controls."""
+        """Gracefully signal camera worker thread to stop and restore UI controls."""
         self.is_running = False
-
-        if self.cap:
-            try:
-                self.cap.release()
-            except Exception:
-                pass
-            self.cap = None
 
         self.start_btn.config(state="normal")
         self.stop_btn.config(state="disabled")
         self.capture_btn.config(state="disabled")
 
         self.video_label.config(image="", text="Camera Inactive\nClick 'Start Camera' below", fg="#666666")
+        self.current_photo = None
+        with self.frame_lock:
+            self.latest_display_frame = None
+            self.latest_raw_frame = None
+
         self.update_status("Camera stream stopped")
         self.logger.info("Camera stopped")
+
+    def _handle_camera_error(self, err_msg: str):
+        """Notify user and reset camera controls when camera encounters an unrecoverable error."""
+        self.stop_camera()
+        messagebox.showerror("Camera Error", err_msg)
+        self.update_status(f"Camera Error: {err_msg}")
 
     def video_loop(self):
         """
         Background worker thread executing video decoding and face recognition.
-        Crucial Architecture Rule:
-        Worker threads do not modify Tkinter widgets directly. Instead, UI updates
-        are marshaled back to the main thread via root.after().
+
+        Threading Rule:
+        1. All OpenCV hardware access (VideoCapture.open, read, release) stays in this thread.
+        2. Zero Tkinter/ImageTk widgets or objects are accessed from this thread.
+        3. Decoded RGB frames and telemetry dictionaries are placed into a thread-safe buffer
+           protected by self.frame_lock for consumption by the main thread.
         """
         import face_recognition
+
+        device_index = int(self.config.get('camera', {}).get('device', 0))
+        cap = self._open_camera(device_index)
+
+        if cap is None or not cap.isOpened():
+            self.logger.error(f"Could not open camera device {device_index}")
+            self.root.after(
+                0, 
+                self._handle_camera_error, 
+                f"Could not access camera device {device_index}!\nPlease verify your camera is connected and not in use."
+            )
+            return
+
+        # Configure camera capture properties
+        try:
+            cam_w = int(self.config.get('camera', {}).get('width', 640))
+            cam_h = int(self.config.get('camera', {}).get('height', 480))
+            cam_fps = int(self.config.get('camera', {}).get('fps', 30))
+            cap.set(cv2.CAP_PROP_FRAME_WIDTH, cam_w)
+            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, cam_h)
+            cap.set(cv2.CAP_PROP_FPS, cam_fps)
+        except Exception as prop_err:
+            self.logger.warning(f"Could not set camera properties: {prop_err}")
+
+        self.logger.info("Camera started")
+        self.root.after(0, lambda: self.update_status("Camera stream active"))
+
         frame_count = 0
+        consecutive_read_failures = 0
+        process_interval = int(self.config.get('face_recognition', {}).get('process_interval', 3))
 
-        while self.is_running:
-            try:
-                if self.cap is None or not self.cap.isOpened():
-                    break
+        try:
+            while self.is_running:
+                ret, frame = cap.read()
+                if not ret or frame is None:
+                    consecutive_read_failures += 1
+                    if consecutive_read_failures > 15:
+                        self.logger.error("Camera read stream lost or disconnected")
+                        self.root.after(
+                            0, 
+                            self._handle_camera_error, 
+                            "Camera stream disconnected or stopped responding."
+                        )
+                        break
+                    time.sleep(0.02)
+                    continue
 
-                ret, frame = self.cap.read()
-                if not ret:
-                    break
-
+                consecutive_read_failures = 0
                 frame_count += 1
 
-                # Process face recognition every 3rd frame to optimize CPU load
-                if frame_count % 3 == 0:
+                # Keep untouched raw copy for facial enrollment capture
+                raw_frame = frame.copy()
+
+                # Process face recognition every Nth frame to optimize CPU load
+                if frame_count % process_interval == 0:
                     small_frame = cv2.resize(frame, (0, 0), fx=0.25, fy=0.25)
                     rgb_small_frame = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
 
-                    self.system.face_locations = face_recognition.face_locations(
+                    locations = face_recognition.face_locations(
                         rgb_small_frame,
                         number_of_times_to_upsample=1,
                         model="hog"
                     )
+                    self.system.face_locations = locations
 
-                    if self.system.face_locations:
-                        self.system.face_encodings = face_recognition.face_encodings(
+                    if locations:
+                        encodings = face_recognition.face_encodings(
                             rgb_small_frame,
-                            self.system.face_locations,
+                            locations,
                             num_jitters=1
                         )
+                        self.system.face_encodings = encodings
                         self.system.face_names = []
                         self.system.face_confidences = []
 
-                        for enc in self.system.face_encodings:
+                        for enc in encodings:
                             name, conf = self.system.recognize_face(enc)
                             self.system.face_names.append(name)
                             self.system.face_confidences.append(conf)
@@ -465,11 +532,54 @@ class FaceRecognitionGUI:
                         self.system.face_names = []
                         self.system.face_confidences = []
 
-                # Render overlays onto full frame
-                self.system.draw_results(frame)
+                # Render overlays onto display frame copy
+                display_frame = frame.copy()
+                self.system.draw_results(display_frame)
 
-                # Prepare frame for Tkinter rendering (BGR -> RGB -> PIL -> PhotoImage)
-                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                # Prepare frame for Tkinter rendering (BGR -> RGB)
+                frame_rgb = cv2.cvtColor(display_frame, cv2.COLOR_BGR2RGB)
+
+                # Package safe snapshot for main UI thread
+                with self.frame_lock:
+                    self.latest_display_frame = frame_rgb
+                    self.latest_raw_frame = raw_frame
+                    self.latest_telemetry = {
+                        'names': list(self.system.face_names),
+                        'locations': list(self.system.face_locations),
+                        'confidences': list(self.system.face_confidences)
+                    }
+
+                # Yield CPU briefly to prevent thread starvation
+                time.sleep(0.01)
+
+        except Exception as loop_err:
+            self.logger.error(f"Error in video loop: {loop_err}")
+        finally:
+            try:
+                cap.release()
+            except Exception:
+                pass
+            self.logger.info("Camera capture hardware released")
+
+    def _render_ui_loop(self):
+        """
+        Main-thread consumer updating video canvas and telemetry.
+        Runs periodically on the Tkinter main event loop via root.after().
+        """
+        if not self.is_running:
+            return
+
+        frame_rgb = None
+        telemetry = None
+
+        with self.frame_lock:
+            if self.latest_display_frame is not None:
+                frame_rgb = self.latest_display_frame
+                self.latest_display_frame = None
+                telemetry = self.latest_telemetry
+
+        if frame_rgb is not None:
+            try:
                 h, w = frame_rgb.shape[:2]
                 max_width = 750
                 if w > max_width:
@@ -477,37 +587,36 @@ class FaceRecognitionGUI:
                     frame_rgb = cv2.resize(frame_rgb, (max_width, int(h * ratio)))
 
                 pil_image = Image.fromarray(frame_rgb)
-                photo = ImageTk.PhotoImage(image=pil_image)
+                # Create ImageTk.PhotoImage strictly on the MainThread!
+                self.current_photo = ImageTk.PhotoImage(image=pil_image)
+                self.video_label.config(image=self.current_photo, text="")
+            except Exception as render_err:
+                self.logger.debug(f"Render warning: {render_err}")
 
-                # Thread-safe dispatch to main UI event loop
-                self.root.after(0, self._render_ui_frame, photo)
+        if telemetry is not None:
+            self._update_detection_telemetry(telemetry)
 
-            except Exception as loop_err:
-                self.logger.error(f"Error in video loop: {loop_err}")
-                break
+        # Schedule next tick on main event loop
+        self.root.after(30, self._render_ui_loop)
 
-    def _render_ui_frame(self, photo: ImageTk.PhotoImage):
-        """Main-thread consumer updating video canvas and telemetry."""
-        if self.is_running:
-            self.video_label.config(image=photo, text="")
-            # Keep persistent reference to prevent garbage collection
-            self.video_label.image = photo
-            self.update_detection_info()
-
-    def update_detection_info(self):
-        """Update detection telemetry text panel."""
+    def _update_detection_telemetry(self, telemetry: Dict[str, Any]):
+        """Update detection telemetry text panel safely on the main thread."""
         try:
             self.info_text.config(state="normal")
             self.info_text.delete("1.0", tk.END)
 
-            count = len(self.system.face_locations)
+            names = telemetry.get('names', [])
+            locations = telemetry.get('locations', [])
+            confidences = telemetry.get('confidences', [])
+
+            count = len(locations)
             if count == 0:
                 self.info_text.insert("1.0", "Status: Monitoring feed...\nNo faces detected in view.")
             else:
                 info_lines = [f"Faces in View: {count}", "=" * 32]
 
-                for i, name in enumerate(self.system.face_names):
-                    conf = self.system.face_confidences[i] if i < len(self.system.face_confidences) else 0.0
+                for i, name in enumerate(names):
+                    conf = confidences[i] if i < len(confidences) else 0.0
                     if name != "Unknown":
                         if conf >= 70.0:
                             level = "[HIGH]  "
@@ -517,10 +626,10 @@ class FaceRecognitionGUI:
                             level = "[LOW]   "
                         info_lines.append(f"{level} {name} ({conf:.1f}%)")
                     else:
-                        info_lines.append(f"[UNKNOWN] Unregistered Subject")
+                        info_lines.append("[UNKNOWN] Unregistered Subject")
 
                 # Show average confidence score
-                valid_confs = [c for c in self.system.face_confidences if c > 0.0]
+                valid_confs = [c for c in confidences if c > 0.0]
                 if valid_confs:
                     avg = sum(valid_confs) / float(len(valid_confs))
                     info_lines.append("=" * 32)
@@ -531,6 +640,11 @@ class FaceRecognitionGUI:
             self.info_text.config(state="disabled")
         except Exception:
             pass
+
+    def update_detection_info(self):
+        """Backward compatibility wrapper for updating detection telemetry."""
+        if hasattr(self, 'latest_telemetry'):
+            self._update_detection_telemetry(self.latest_telemetry)
 
     # --------------------------------------------------------------------------
     # 4. IDENTITY MANAGEMENT
@@ -553,13 +667,15 @@ class FaceRecognitionGUI:
 
     def capture_face(self):
         """Enroll a face detected in the live camera frame."""
-        if not self.is_running or self.cap is None:
+        if not self.is_running:
             messagebox.showwarning("Warning", "Camera is not active. Click 'Start Camera' first.")
             return
 
-        ret, frame = self.cap.read()
-        if not ret:
-            messagebox.showerror("Error", "Could not capture image from camera.")
+        with self.frame_lock:
+            frame = self.latest_raw_frame.copy() if self.latest_raw_frame is not None else None
+
+        if frame is None:
+            messagebox.showerror("Error", "No camera frame is currently available. Please wait a moment.")
             return
 
         import face_recognition
@@ -1074,6 +1190,8 @@ class FaceRecognitionGUI:
             if self.recognition_history and self.auto_save_enabled:
                 self.save_history()
             self.stop_camera()
+            if self.video_thread and self.video_thread.is_alive():
+                self.video_thread.join(timeout=1.0)
             self.logger.info("Application terminated cleanly")
             self.root.destroy()
 
