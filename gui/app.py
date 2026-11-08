@@ -490,6 +490,9 @@ class FaceRecognitionGUI:
                 consecutive_read_failures = 0
                 frame_count += 1
 
+                if frame_count == 1 or frame_count % 30 == 0:
+                    self.logger.debug(f"Camera frame #{frame_count} captured successfully: shape={frame.shape}")
+
                 # Keep untouched raw copy for facial enrollment capture
                 raw_frame = frame.copy()
 
@@ -506,6 +509,7 @@ class FaceRecognitionGUI:
                     self.system.face_locations = locations
 
                     if locations:
+                        self.logger.debug(f"Frame #{frame_count}: Detected {len(locations)} face location(s)")
                         encodings = face_recognition.face_encodings(
                             rgb_small_frame,
                             locations,
@@ -519,6 +523,7 @@ class FaceRecognitionGUI:
                             name, conf = self.system.recognize_face(enc)
                             self.system.face_names.append(name)
                             self.system.face_confidences.append(conf)
+                            self.logger.debug(f"Identified subject '{name}' with {conf:.1f}% confidence")
 
                             # Log recognized face if cooldown has elapsed
                             if name != "Unknown" and conf >= 50.0:

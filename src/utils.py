@@ -81,8 +81,12 @@ def get_ist_filename_timestamp() -> str:
 
 
 # ------------------------------------------------------------------------------
-# 2. LOGGING CONFIGURATION
+# 2. LOGGING & FAULT DIAGNOSTICS CONFIGURATION
 # ------------------------------------------------------------------------------
+import faulthandler
+import threading
+import sys
+
 class ISTFormatter(logging.Formatter):
     """Custom logging formatter that renders timestamps strictly in IST."""
     def formatTime(self, record, datefmt=None):
@@ -91,30 +95,50 @@ class ISTFormatter(logging.Formatter):
             return dt.strftime(datefmt)
         return dt.strftime("%Y-%m-%d %H:%M:%S IST")
 
-def setup_logging(log_file: str = "logs/app.log") -> logging.Logger:
+class AutoFlushFileHandler(logging.FileHandler):
+    """FileHandler that flushes immediately after every write to prevent log truncation on crashes."""
+    def emit(self, record):
+        super().emit(record)
+        self.flush()
+
+_CRASH_LOG_HANDLE = None
+
+def setup_logging(log_file: str = "logs/app.log", debug: bool = True) -> logging.Logger:
     """
     Configure application logging to write to both console and a log file.
+    Enables low-level C-extension crash interception via faulthandler.
 
     Timestamps in logs are formatted in Indian Standard Time (IST).
 
     Args:
         log_file (str): Filepath where log records will be written.
+        debug (bool): When True, enables verbose DEBUG-level diagnostics.
 
     Returns:
         logging.Logger: Configured root logger instance.
     """
+    global _CRASH_LOG_HANDLE
     log_dir = Path(log_file).parent
     log_dir.mkdir(parents=True, exist_ok=True)
     
+    # 1. Enable faulthandler to catch C-level access violations, segfaults, and aborts
+    if _CRASH_LOG_HANDLE is None:
+        try:
+            crash_log_path = log_dir / "crash.log"
+            _CRASH_LOG_HANDLE = open(crash_log_path, "a", encoding="utf-8")
+            faulthandler.enable(file=_CRASH_LOG_HANDLE, all_threads=True)
+        except Exception:
+            pass
+
     logger = logging.getLogger("FaceRecognitionSystem")
-    logger.setLevel(logging.INFO)
+    logger.setLevel(logging.DEBUG if debug else logging.INFO)
 
     # Avoid adding duplicate handlers if setup_logging is called multiple times
     if not logger.handlers:
         formatter = ISTFormatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
-        # File handler: persists logs on disk
-        file_handler = logging.FileHandler(log_file, encoding='utf-8')
+        # Auto-flushing file handler: persists logs on disk immediately
+        file_handler = AutoFlushFileHandler(log_file, encoding='utf-8')
         file_handler.setFormatter(formatter)
         logger.addHandler(file_handler)
 
@@ -122,6 +146,21 @@ def setup_logging(log_file: str = "logs/app.log") -> logging.Logger:
         stream_handler = logging.StreamHandler()
         stream_handler.setFormatter(formatter)
         logger.addHandler(stream_handler)
+
+        # 2. Register global exception hooks for Python errors
+        def handle_unhandled_exception(exc_type, exc_value, exc_traceback):
+            logger.critical("UNHANDLED MAIN THREAD EXCEPTION:", exc_info=(exc_type, exc_value, exc_traceback))
+            sys.__excepthook__(exc_type, exc_value, exc_traceback)
+
+        sys.excepthook = handle_unhandled_exception
+
+        if hasattr(threading, 'excepthook'):
+            def handle_thread_exception(args):
+                logger.critical(
+                    f"UNHANDLED THREAD EXCEPTION in [{args.thread.name}]:", 
+                    exc_info=(args.exc_type, args.exc_value, args.exc_traceback)
+                )
+            threading.excepthook = handle_thread_exception
 
     return logger
 
