@@ -155,6 +155,27 @@ class AttendanceSummaryResponse(BaseModel):
     absentees: List[str]
 
 
+class WebhookTestRequest(BaseModel):
+    """Payload to test an outbound webhook endpoint."""
+    endpoint_url: str = Field(..., description="Destination HTTP/HTTPS webhook URL")
+
+
+class WebhookConfigRequest(BaseModel):
+    """Payload to register an outbound webhook endpoint."""
+    endpoint_url: str = Field(..., description="Destination HTTP/HTTPS webhook URL")
+    enabled: bool = Field(True, description="Enable webhook dispatching")
+
+
+class WebhookStatusResponse(BaseModel):
+    """Diagnostics and telemetry for outbound security webhooks."""
+    enabled: bool
+    endpoints: List[str]
+    cooldown_seconds: float
+    total_dispatched: int
+    total_failed: int
+    total_suppressed: int
+
+
 # ---------------------------------------------------------------------------
 # Helper Utility Functions for Image Conversion
 # ---------------------------------------------------------------------------
@@ -625,6 +646,74 @@ def create_app(system: Optional[FaceRecognitionSystem] = None,
             total_sightings=summary['total_sightings'],
             attendees=attendees,
             absentees=summary.get('absentees', [])
+        )
+
+    # -----------------------------------------------------------------------
+    # Webhook Management Endpoints
+    # -----------------------------------------------------------------------
+
+    @app.get("/api/v1/webhooks", response_model=WebhookStatusResponse, tags=["Security Webhooks"],
+             summary="Query Outbound Security Webhook Status & Telemetry")
+    async def get_webhook_status():
+        """
+        Query registered webhook endpoints, delivery counters, and rate-limiting status.
+        """
+        sys_instance: FaceRecognitionSystem = app.state.system
+        dispatcher = getattr(sys_instance, 'webhook_dispatcher', None)
+
+        if dispatcher is None:
+            return WebhookStatusResponse(
+                enabled=False,
+                endpoints=[],
+                cooldown_seconds=30.0,
+                total_dispatched=0,
+                total_failed=0,
+                total_suppressed=0
+            )
+
+        return WebhookStatusResponse(
+            enabled=dispatcher.enabled,
+            endpoints=list(dispatcher.endpoints),
+            cooldown_seconds=dispatcher.cooldown_seconds,
+            total_dispatched=dispatcher.total_dispatched,
+            total_failed=dispatcher.total_failed,
+            total_suppressed=dispatcher.total_suppressed
+        )
+
+    @app.post("/api/v1/webhooks/test", tags=["Security Webhooks"],
+              summary="Send Test Ping to a Destination Webhook URL")
+    async def test_webhook_endpoint(payload: WebhookTestRequest):
+        """
+        Send a test alert payload to verify connectivity with a webhook receiver.
+        """
+        sys_instance: FaceRecognitionSystem = app.state.system
+        dispatcher = getattr(sys_instance, 'webhook_dispatcher', None)
+        if dispatcher is None:
+            raise HTTPException(status_code=500, detail="Webhook dispatcher is uninitialized.")
+
+        result = dispatcher.send_test_ping(payload.endpoint_url)
+        return result
+
+    @app.post("/api/v1/webhooks/endpoint", response_model=WebhookStatusResponse, tags=["Security Webhooks"],
+              summary="Register or Toggle Outbound Webhook Endpoint")
+    async def register_webhook_endpoint(payload: WebhookConfigRequest):
+        """
+        Add a destination URL to the active webhook alert dispatcher.
+        """
+        sys_instance: FaceRecognitionSystem = app.state.system
+        dispatcher = getattr(sys_instance, 'webhook_dispatcher', None)
+        if dispatcher is None:
+            raise HTTPException(status_code=500, detail="Webhook dispatcher is uninitialized.")
+
+        dispatcher.add_endpoint(payload.endpoint_url)
+        dispatcher.enabled = payload.enabled
+        return WebhookStatusResponse(
+            enabled=dispatcher.enabled,
+            endpoints=list(dispatcher.endpoints),
+            cooldown_seconds=dispatcher.cooldown_seconds,
+            total_dispatched=dispatcher.total_dispatched,
+            total_failed=dispatcher.total_failed,
+            total_suppressed=dispatcher.total_suppressed
         )
 
     # -----------------------------------------------------------------------

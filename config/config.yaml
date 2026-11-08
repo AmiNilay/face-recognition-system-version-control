@@ -51,3 +51,22 @@ api:
   cors_origins: ["*"]           # Allowed CORS origins
   enable_docs: true             # Enable Swagger UI (/docs) and ReDoc (/redoc)
 
+rtsp:
+  enabled: false                # Ingest video from network RTSP IP camera feed
+  url: "rtsp://admin:password@192.168.1.100:554/h264"
+  reconnect_interval_seconds: 3.0
+  max_reconnect_attempts: 50
+
+motion_detection:
+  enabled: false                # Only run face recognition when environmental motion is detected
+  min_area: 800                 # Minimum pixel contour area to register active motion
+  threshold: 25.0               # Background subtraction variance threshold
+  cooldown_frames: 20           # Maintain detection active for N frames after motion settles
+
+webhooks:
+  enabled: false                # Outbound HTTP alerts on security events
+  endpoints: []                 # Target webhook URLs (e.g. Slack, Discord, SIEM)
+  cooldown_seconds: 30.0        # Anti-spam deduplication cooldown window
+  include_snapshot: true        # Attach Base64 JPEG thumbnail preview to alert payload
+
+

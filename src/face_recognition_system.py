@@ -27,6 +27,8 @@ from src.face_encoder import FaceEncoder
 from src.anti_spoofing import AntiSpoofEngine, LivenessResult
 from src.security import SecurityManager
 from src.vector_index import VectorIndex
+from src.motion_detector import MotionDetector
+from src.webhook_dispatcher import WebhookDispatcher, SecurityEventType
 
 def sanitize_identity_name(name: str) -> str:
     """
@@ -69,6 +71,25 @@ class FaceRecognitionSystem:
         self.anti_spoof = AntiSpoofEngine(self.config)
         self.sec = SecurityManager()
         self.vector_index = VectorIndex(use_kdtree=True)
+
+        # Motion detection gating
+        motion_cfg = self.config.get('motion_detection', {})
+        self.motion_detector = MotionDetector(
+            enabled=bool(motion_cfg.get('enabled', False)),
+            min_motion_area=int(motion_cfg.get('min_area', 800)),
+            var_threshold=float(motion_cfg.get('threshold', 25.0)),
+            cooldown_frames=int(motion_cfg.get('cooldown_frames', 20))
+        )
+
+        # Webhook alert dispatcher
+        webhook_cfg = self.config.get('webhooks', {})
+        self.webhook_dispatcher = WebhookDispatcher(
+            endpoints=webhook_cfg.get('endpoints', []),
+            enabled=bool(webhook_cfg.get('enabled', False)),
+            cooldown_seconds=float(webhook_cfg.get('cooldown_seconds', 30.0)),
+            include_snapshot=bool(webhook_cfg.get('include_snapshot', True)),
+            camera_id=str(self.config.get('camera', {}).get('device', 'Camera_0'))
+        )
 
         # Internal state collections
         self.known_face_encodings: List[np.ndarray] = []
@@ -660,6 +681,32 @@ class FaceRecognitionSystem:
             }
 
         h_f, w_f = frame.shape[:2]
+
+        # Motion gating optimization: if scene is static and no face is currently tracked, skip heavy inference
+        if self.motion_detector.enabled:
+            has_motion, motion_area, _ = self.motion_detector.detect_motion(frame)
+            if not has_motion and len(self.face_locations) == 0:
+                output_frame = frame.copy() if draw_overlays else frame
+                if draw_overlays:
+                    cv2.putText(
+                        output_frame,
+                        "Motion: IDLE (Power Save Mode)",
+                        (10, h_f - 15),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.55,
+                        (100, 200, 100),
+                        1,
+                        cv2.LINE_AA
+                    )
+                telemetry = {
+                    'names': [], 'locations': [], 'confidences': [],
+                    'liveness': [], 'poses': [], 'challenges': [],
+                    'num_faces': 0, 'num_enrolled': len(self.known_face_names),
+                    'motion_active': False,
+                    'savings_ratio': round(self.motion_detector.savings_ratio, 1)
+                }
+                return output_frame, telemetry
+
         small_frame = cv2.resize(frame, (0, 0), fx=0.25, fy=0.25)
         rgb_small_frame = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
 
@@ -690,6 +737,26 @@ class FaceRecognitionSystem:
                 )
                 self.face_liveness.append(liveness_res)
 
+                # Webhook security alert dispatch
+                if self.webhook_dispatcher.enabled:
+                    snapshot_img = face_crop if face_crop is not None else frame
+                    if name == "Unknown":
+                        self.webhook_dispatcher.dispatch(
+                            event_type=SecurityEventType.UNKNOWN_FACE,
+                            details="Unregistered subject sighted in camera view",
+                            subject_name="Unknown",
+                            confidence=0.0,
+                            frame_bgr=snapshot_img
+                        )
+                    elif liveness_res and not liveness_res.is_live:
+                        self.webhook_dispatcher.dispatch(
+                            event_type=SecurityEventType.SPOOF_ATTEMPT,
+                            details=f"Presentation attack spoof detected: {liveness_res.spoof_reason or 'Failed Liveness'}",
+                            subject_name=name,
+                            confidence=float(conf),
+                            frame_bgr=snapshot_img
+                        )
+
         output_frame = frame.copy() if draw_overlays else frame
         if draw_overlays:
             self.draw_results(output_frame)
@@ -702,7 +769,9 @@ class FaceRecognitionSystem:
             'poses': [r.head_pose for r in self.face_liveness],
             'challenges': [r.challenge_prompt for r in self.face_liveness],
             'num_faces': len(self.face_locations),
-            'num_enrolled': len(self.known_face_names)
+            'num_enrolled': len(self.known_face_names),
+            'motion_active': True,
+            'savings_ratio': round(self.motion_detector.savings_ratio, 1)
         }
         return output_frame, telemetry
 

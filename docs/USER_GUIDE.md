@@ -213,6 +213,38 @@ run_face_id_wizard.bat
 * Submit multiple angle captures to `POST /api/v1/enroll/composite` with image Base64 payloads.
 * The server verifies each perspective, computes the $L_2$-normalized Fréchet centroid embedding, and indexes it into the spatial KD-tree.
 
+---
+
+## 12. RTSP IP Camera Streaming, Motion Gating & Security Webhooks
+
+### 1. Ingesting RTSP IP Security Cameras
+Run recognition against any network security camera stream:
+```bash
+# Stream from RTSP IP Camera
+python main.py --rtsp "rtsp://admin:password@192.168.1.100:554/h264"
+
+# Or launch via the one-click Windows batch launcher
+run_rtsp_stream.bat
+```
+* **Zero-Latency Jitter Buffer:** Always processes the live frame without buffering latency drift.
+* **Auto-Reconnect:** Automatically reconnects with exponential backoff on WiFi or network dropouts.
+
+### 2. Motion Gating (Idle Compute Optimization)
+Reduces idle CPU utilization by up to 90% by only executing facial detection when physical motion occurs:
+```bash
+python main.py --motion
+```
+* Can also be toggled live in the Desktop GUI via **Settings ➔ Motion Gating (Power Save Mode)**.
+
+### 3. Outbound Security Webhooks
+Automatically dispatch real-time alerts to Slack, Discord, or security SIEM endpoints when unknown subjects or presentation attack spoofs are detected:
+```bash
+python main.py --webhook "https://your-security-server.com/api/alerts"
+```
+* Can also be configured in the Desktop GUI via **Settings ➔ Configure Webhook Endpoint...**
+* Includes anti-spam rate limiting and optional Base64 thumbnail snapshots.
+
+
 
 
 

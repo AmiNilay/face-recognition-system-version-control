@@ -32,6 +32,9 @@ def main():
     parser.add_argument('--host', type=str, default='127.0.0.1', help='API server host address (default: 127.0.0.1)')
     parser.add_argument('--port', type=int, default=8000, help='API server port (default: 8000)')
     parser.add_argument('--video', type=str, default='0', help='Video source: device index (0) or video file path')
+    parser.add_argument('--rtsp', type=str, default=None, help='RTSP IP camera stream URL (e.g. rtsp://user:pass@ip:port/h264)')
+    parser.add_argument('--motion', action='store_true', help='Enable motion-triggered inference gating to reduce idle CPU')
+    parser.add_argument('--webhook', type=str, default=None, help='Target webhook URL for outbound security alerts')
     
     args = parser.parse_args()
 
@@ -64,6 +67,17 @@ def main():
 
         system = FaceRecognitionSystem()
 
+        # Apply motion gating CLI override
+        if args.motion:
+            system.motion_detector.enabled = True
+            print("[INFO] Motion-triggered inference gating: ENABLED")
+
+        # Apply webhook CLI override
+        if args.webhook:
+            system.webhook_dispatcher.enabled = True
+            system.webhook_dispatcher.add_endpoint(args.webhook)
+            print(f"[INFO] Security webhook alert endpoint registered: {args.webhook}")
+
         # Attempt to load cached encodings first; otherwise compute from known_faces/
         if not system.load_encodings():
             if system.load_known_faces():
@@ -81,7 +95,12 @@ def main():
         print("  - 'S': Save screenshot")
         print("  - 'C': Enroll new face live\n")
 
-        video_source = int(args.video) if args.video.isdigit() else args.video
+        # Determine video source: RTSP stream URL or video device index
+        if args.rtsp:
+            video_source = args.rtsp
+            print(f"[INFO] Streaming from RTSP IP Camera: {args.rtsp}")
+        else:
+            video_source = int(args.video) if args.video.isdigit() else args.video
         system.run_recognition(video_source)
 
 if __name__ == "__main__":

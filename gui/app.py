@@ -447,6 +447,21 @@ class FaceRecognitionGUI:
             variable=self.audio_var,
             command=self.toggle_audio
         )
+        motion_enabled = bool(getattr(getattr(self.system, 'motion_detector', None), 'enabled', False))
+        self.motion_var = tk.BooleanVar(value=motion_enabled)
+        settings_menu.add_checkbutton(
+            label="Motion Gating (Power Save Mode)",
+            variable=self.motion_var,
+            command=self.toggle_motion_gating
+        )
+        webhook_enabled = bool(getattr(getattr(self.system, 'webhook_dispatcher', None), 'enabled', False))
+        self.webhook_var = tk.BooleanVar(value=webhook_enabled)
+        settings_menu.add_checkbutton(
+            label="Security Webhook Alerts",
+            variable=self.webhook_var,
+            command=self.toggle_webhooks
+        )
+        settings_menu.add_command(label="Configure Webhook Endpoint...", command=self.configure_webhook_dialog)
         settings_menu.add_separator()
         settings_menu.add_command(label="Set Recognition Cooldown...", command=self.set_cooldown)
 
@@ -817,6 +832,36 @@ class FaceRecognitionGUI:
             state = "Enabled" if self.announcer.enabled else "Disabled"
             self.update_status(f"Voice Announcements: {state}")
             self.logger.info(f"Voice Announcements toggled: {state}")
+
+    def toggle_motion_gating(self):
+        """Toggle motion-triggered frame analysis to optimize idle compute."""
+        self.system.motion_detector.enabled = self.motion_var.get()
+        state = "Enabled" if self.system.motion_detector.enabled else "Disabled"
+        self.update_status(f"Motion Gating: {state}")
+        self.logger.info(f"Motion detection gating toggled: {state}")
+
+    def toggle_webhooks(self):
+        """Toggle outbound security webhook alerts."""
+        self.system.webhook_dispatcher.enabled = self.webhook_var.get()
+        state = "Enabled" if self.system.webhook_dispatcher.enabled else "Disabled"
+        self.update_status(f"Webhook Alerts: {state}")
+        self.logger.info(f"Security Webhook Alerts toggled: {state}")
+
+    def configure_webhook_dialog(self):
+        """Prompt user to add or update an outbound webhook URL."""
+        current_endpoints = ", ".join(self.system.webhook_dispatcher.endpoints)
+        url = simpledialog.askstring(
+            "Webhook Configuration",
+            f"Enter target webhook endpoint URL:\n(Currently: {current_endpoints or 'None'})",
+            parent=self.root
+        )
+        if url and url.strip():
+            clean_url = url.strip()
+            self.system.webhook_dispatcher.add_endpoint(clean_url)
+            self.system.webhook_dispatcher.enabled = True
+            self.webhook_var.set(True)
+            self.update_status(f"Added webhook endpoint: {clean_url}")
+            messagebox.showinfo("Webhook Added", f"Webhook registered:\n{clean_url}\nAlerts will now be sent on unknown subjects or spoof events.")
 
     def generate_attendance_report(self):
         """Generate and export presentation-grade Apple-style attendance report in HTML."""

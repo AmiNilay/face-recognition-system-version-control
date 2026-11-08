@@ -317,4 +317,50 @@ Multi-angle biometric enrollment engine inspired by Apple Face ID design princip
 * `render_apple_face_id_hud(frame, session, center_xy=None, radius=140) -> np.ndarray`  
   Draws Apple Face ID circular HUD with 36 radial tick marks that dynamically illuminate from dark gray (`#3a3a3c`) to Apple Mint Green (`#30d158`) as each pose is acquired.
 
+---
+
+## 12. `RTSPStreamReader` (`src/rtsp_stream.py`)
+
+Threaded, zero-latency video stream ingestion client for RTSP, HTTP/HTTPS IP cameras, and local capture devices.
+
+### Methods
+
+* `start() -> bool`: Launches dedicated background worker thread continuously pulling video frames.
+* `read() -> Tuple[bool, Optional[np.ndarray]]`: Returns `(True, latest_frame)` with zero queue latency buffer buildup.
+* `is_connected() -> bool`: Returns True if stream is actively delivering valid frames.
+* `get_stats() -> Dict[str, Any]`: Returns uptime, frames received, reconnect counts, and connection state.
+* `stop() -> None`: Gracefully terminates background worker and releases OpenCV capture handle.
+
+---
+
+## 13. `MotionDetector` (`src/motion_detector.py`)
+
+Background subtraction engine (`cv2.createBackgroundSubtractorMOG2`) and morphological filter to gate facial inference on scene activity.
+
+### Methods
+
+* `detect_motion(frame_bgr: np.ndarray) -> Tuple[bool, float, List[Tuple[int, int, int, int]]]`: Evaluates frame for physical motion, returning motion presence, contour area, and bounding boxes.
+* `reset() -> None`: Resets background model and cooldown state.
+* `savings_ratio -> float`: Returns percentage of frames gated / skipped due to static environment (reducing idle CPU by up to 90%).
+
+---
+
+## 14. `WebhookDispatcher` (`src/webhook_dispatcher.py`)
+
+Non-blocking outbound HTTP webhook client for security event notifications.
+
+### Event Types
+* `UNKNOWN_FACE_DETECTED`: Alert when an unregistered individual is sighted.
+* `SPOOF_ATTEMPT_DETECTED`: Warning when presentation attack fails anti-spoofing liveness.
+* `ATTENDANCE_VERIFIED`: Notification when an enrolled employee is verified.
+* `STREAM_DISCONNECTED` / `STREAM_RECONNECTED`: Camera connectivity state changes.
+
+### Methods
+* `dispatch(event_type, details, subject_name=None, confidence=None, frame_bgr=None) -> bool`: Enqueues an alert for background delivery with anti-spam cooldown deduplication and Base64 thumbnail generation.
+* `add_endpoint(url: str) -> bool`: Registers target webhook endpoint URL.
+* `remove_endpoint(url: str) -> bool`: Removes target webhook endpoint URL.
+* `send_test_ping(endpoint_url: str) -> Dict[str, Any]`: Sends synchronous verification test ping.
+* `stop() -> None`: Terminates background worker thread.
+
+
 
