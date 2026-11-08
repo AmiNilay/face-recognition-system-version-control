@@ -25,7 +25,8 @@ from typing import List, Tuple, Optional, Any
 try:
     from scipy.spatial import cKDTree
     HAS_CKDTREE = True
-except ImportError:
+except Exception:
+    cKDTree = None
     HAS_CKDTREE = False
 
 

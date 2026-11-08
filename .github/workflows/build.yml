@@ -29,8 +29,9 @@ jobs:
           pip install -r requirements.txt
 
       - name: Run Test Suite (74 Unit Tests)
+        shell: cmd
         run: |
-          python -m unittest discover tests -p "test_*.py" -v
+          python -m unittest discover -s tests -p "test_*.py" -v
 
   build-windows:
     name: Build Standalone Windows Application

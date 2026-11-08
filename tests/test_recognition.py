@@ -136,6 +136,10 @@ class TestFaceRecognition(unittest.TestCase):
 
     def test_vector_index_kdtree_search_and_linear_equivalence(self):
         """Verify spatial cKDTree index produces identical matches to linear scan."""
+        from src.vector_index import HAS_CKDTREE
+        if not HAS_CKDTREE:
+            self.skipTest("scipy.spatial.cKDTree is not available in environment")
+
         np.random.seed(42)
         mock_encodings = [np.random.rand(128) for _ in range(20)]
         mock_names = [f"User_{i}" for i in range(20)]
