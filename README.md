@@ -119,11 +119,6 @@ face-recognition-system-version-control/
 │   ├── API.md                            # Comprehensive REST API & class reference
 │   ├── USER_GUIDE.md                     # Operator handbook
 │   └── SYSTEM_AUDIT_AND_ROADMAP.md       # Security audit & development history
-├── face-recognition-system-official-website-main/ # Official Web Portal
-│   ├── index.html                        # Landing page (v2.1.0 Enterprise)
-│   ├── css/style.css                     # Responsive styling & HUD animations
-│   ├── js/main.js                        # Dynamic tab switcher & automatic year
-│   └── README.md                         # Website documentation
 ├── gui/                                  # GUI package
 │   ├── app.py                            # Modern Dark Tkinter desktop application
 │   ├── face_id_wizard.py                 # Apple Face ID 36-segment HUD enrollment wizard
@@ -190,4 +185,5 @@ face-recognition-system-version-control/
 
 - **License:** Distributed under the [MIT License](LICENSE).
 - **Creator & Lead Architect:** [Nilay Naha](https://github.com/AmiNilay)
-- **Repository:** [face-recognition-system-version-control](https://github.com/AmiNilay/face-recognition-system-version-control)
+- **Official Website Repository:** [face-recognition-system-official-website](https://github.com/AmiNilay/face-recognition-system-official-website)
+- **Project Repository:** [face-recognition-system-version-control](https://github.com/AmiNilay/face-recognition-system-version-control)
