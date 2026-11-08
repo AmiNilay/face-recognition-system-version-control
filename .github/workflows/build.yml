@@ -1,0 +1,73 @@
+name: Build & Verify Face Recognition System
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Run Automated Unit Tests (74 Tests)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: "pip"
+
+      - name: Install Build Prerequisites & Dlib
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          pip install cmake
+          pip install https://github.com/sachadee/Dlib/raw/main/dlib-19.22.99-cp310-cp310-win_amd64.whl
+          pip install -r requirements.txt
+
+      - name: Run Test Suite (74 Unit Tests)
+        run: |
+          python -m unittest discover tests -p "test_*.py" -v
+
+  build-windows:
+    name: Build Standalone Windows Application
+    needs: test
+    runs-on: windows-latest
+    env:
+      CI: "true"
+      GITHUB_ACTIONS: "true"
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: "pip"
+
+      - name: Install Dependencies & PyInstaller
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          pip install cmake
+          pip install https://github.com/sachadee/Dlib/raw/main/dlib-19.22.99-cp310-cp310-win_amd64.whl
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build Windows Executable
+        run: |
+          cmd.exe /c build_exe.bat
+
+      - name: Compress Executable Package
+        run: |
+          Compress-Archive -Path dist/FaceRecognitionSystem -DestinationPath dist/FaceRecognitionSystem-Windows-v2.1.0.zip -Force
+
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FaceRecognitionSystem-Windows-v2.1.0
+          path: dist/FaceRecognitionSystem-Windows-v2.1.0.zip
+          retention-days: 30
