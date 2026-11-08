@@ -288,3 +288,9 @@ window.addEventListener('scroll', () => {
     navbar.style.boxShadow = '0 4px 0 rgba(45, 27, 78, 0.15)';
   }
 });
+
+// ===== Dynamic Automatic Copyright Year =====
+const currentYearEl = document.getElementById('current-year');
+if (currentYearEl) {
+  currentYearEl.textContent = new Date().getFullYear();
+}
