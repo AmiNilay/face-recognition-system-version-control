@@ -1,13 +1,15 @@
-"""Unit tests for FaceRecognitionSystem and FaceEncoder."""
+"""Unit tests for FaceRecognitionSystem, FaceEncoder, and DatabaseManager."""
 
 import unittest
 import numpy as np
 import tempfile
 import os
 import gc
+import re
 from src.face_encoder import FaceEncoder
-from src.face_recognition_system import FaceRecognitionSystem
+from src.face_recognition_system import FaceRecognitionSystem, sanitize_identity_name
 from src.database_manager import DatabaseManager
+from src.utils import format_ist_timestamp, get_ist_now
 
 class TestFaceRecognition(unittest.TestCase):
     """Test suite for FaceRecognitionSystem & FaceEncoder."""
@@ -43,6 +45,43 @@ class TestFaceRecognition(unittest.TestCase):
         name, confidence = self.system.recognize_face(unknown_embedding)
         self.assertEqual(name, "Unknown")
         self.assertEqual(confidence, 0.0)
+
+    def test_sanitize_identity_name(self):
+        """Ensure malicious directory traversal sequences are stripped."""
+        unsafe_name = "../../etc/passwd/John..Doe@@##$$"
+        cleaned = sanitize_identity_name(unsafe_name)
+        self.assertNotIn("..", cleaned)
+        self.assertNotIn("/", cleaned)
+        self.assertEqual(cleaned, "etcpasswdJohnDoe")
+
+    def test_config_driven_parameters(self):
+        """Verify custom configuration dictionaries are respected."""
+        custom_cfg = {
+            'face_recognition': {
+                'tolerance': 0.45,
+                'model': 'hog',
+                'encoding_model': 'large',
+                'process_interval': 5
+            },
+            'camera': {
+                'width': 1280,
+                'height': 720,
+                'fps': 60
+            }
+        }
+        sys_custom = FaceRecognitionSystem(config=custom_cfg)
+        self.assertEqual(sys_custom.tolerance, 0.45)
+        self.assertEqual(sys_custom.process_interval, 5)
+        self.assertEqual(sys_custom.cam_width, 1280)
+        self.assertEqual(sys_custom.cam_height, 720)
+
+    def test_ist_timestamp_format(self):
+        """Verify IST timestamps contain IST and valid date pattern."""
+        ts = format_ist_timestamp()
+        self.assertTrue(ts.endswith("IST"))
+        # Match pattern YYYY-MM-DD HH:MM:SS IST
+        pattern = r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} IST$"
+        self.assertRegex(ts, pattern)
 
     def test_database_manager_operations(self):
         """Test database initialization, logging, and query."""

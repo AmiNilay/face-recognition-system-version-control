@@ -4,11 +4,12 @@ Primary Face Recognition System Module
 This module coordinates the complete computer vision pipeline:
 1. Ingesting and decoding reference photos from the known_faces/ folder.
 2. Generating and caching 128-dimensional biometric embeddings.
-3. Capturing real-time video feeds from camera devices.
-4. Downscaling frames for accelerated inference.
-5. Computing Euclidean face distance and mapping distance to confidence percentages.
-6. Drawing bounding overlays with confidence scores and telemetry.
-7. Managing facial additions, removals, and frame captures with IST timestamps.
+3. Leveraging modular FaceDetector and FaceEncoder components.
+4. Capturing real-time video feeds from camera devices with settings from config.yaml.
+5. Downscaling frames for accelerated inference (frame skipping and 0.25 scale).
+6. Computing Euclidean face distance and mapping distance to confidence percentages.
+7. Drawing bounding overlays with confidence scores and telemetry.
+8. Managing facial additions, removals, and frame captures with IST timestamps.
 """
 
 import os
@@ -18,27 +19,54 @@ import pickle
 import numpy as np
 from pathlib import Path
 from PIL import Image
-from typing import Tuple, List, Optional
-from src.utils import get_ist_filename_timestamp, format_ist_timestamp
+from typing import Tuple, List, Optional, Dict, Any
+
+from src.utils import get_ist_filename_timestamp, format_ist_timestamp, load_config
+from src.face_detector import FaceDetector
+from src.face_encoder import FaceEncoder
 
 def sanitize_identity_name(name: str) -> str:
     """
     Sanitize a human identity name to prevent path traversal and filesystem errors.
     Removes dangerous characters like '..', '/', '\\', and control characters.
     """
-    # Allow alphanumeric, spaces, hyphens, and underscores
     clean = re.sub(r'[^a-zA-Z0-9_\- ]', '', name.strip())
-    # Collapse multiple spaces or underscores
     clean = re.sub(r'\s+', ' ', clean)
     return clean
 
 class FaceRecognitionSystem:
     """
     Core facial recognition controller and video processing engine.
+    Integrates FaceDetector and FaceEncoder with configuration-driven tuning.
     """
 
-    def __init__(self):
-        """Initialize empty collections for known faces and detection telemetry."""
+    def __init__(self, config: Optional[Dict[str, Any]] = None):
+        """
+        Initialize the system with configuration and modular detector/encoder engines.
+
+        Args:
+            config (dict, optional): Custom configuration dictionary.
+                                     If None, loads settings from config/config.yaml.
+        """
+        self.config = config if config is not None else load_config()
+
+        # Extract config parameters with robust fallbacks
+        recog_cfg = self.config.get('face_recognition', {})
+        self.tolerance = float(recog_cfg.get('tolerance', 0.6))
+        self.model_type = str(recog_cfg.get('model', 'hog'))
+        self.encoding_model = str(recog_cfg.get('encoding_model', 'large'))
+        self.process_interval = int(recog_cfg.get('process_interval', 3))
+
+        cam_cfg = self.config.get('camera', {})
+        self.cam_width = int(cam_cfg.get('width', 640))
+        self.cam_height = int(cam_cfg.get('height', 480))
+        self.cam_fps = int(cam_cfg.get('fps', 30))
+
+        # Modular engines
+        self.detector = FaceDetector(detection_method=self.model_type)
+        self.encoder = FaceEncoder(encoding_model=self.encoding_model)
+
+        # Internal state collections
         self.known_face_encodings: List[np.ndarray] = []
         self.known_face_names: List[str] = []
         self.face_locations: List[Tuple[int, int, int, int]] = []
@@ -57,8 +85,6 @@ class FaceRecognitionSystem:
         Returns:
             bool: True if one or more valid face encodings were loaded; False otherwise.
         """
-        import face_recognition
-
         folder_path = Path(images_folder)
         if not folder_path.exists():
             folder_path.mkdir(parents=True, exist_ok=True)
@@ -85,11 +111,10 @@ class FaceRecognitionSystem:
                     rgb_image = pil_image.convert('RGB')
                     image_array = np.array(rgb_image, dtype=np.uint8)
 
-                # Generate 128-d encoding (num_jitters=1 provides fast single-pass encoding)
-                encodings = face_recognition.face_encodings(image_array, num_jitters=1)
+                # Compute 128-d feature encoding
+                face_encoding = self.encoder.encode_face(image_array)
 
-                if encodings:
-                    face_encoding = encodings[0]
+                if face_encoding is not None:
                     # Derive clean display name from filename (e.g. 'John_Doe.jpg' -> 'John Doe')
                     raw_stem = os.path.splitext(filename)[0]
                     name = raw_stem.replace('_', ' ').strip()
@@ -101,6 +126,10 @@ class FaceRecognitionSystem:
                     print(f"[WARNING] No face detected in: {filename}")
             except Exception as err:
                 print(f"[ERROR] Failed to load {filename}: {err}")
+
+        # Sync modular encoder
+        self.encoder.known_encodings = list(self.known_face_encodings)
+        self.encoder.known_names = list(self.known_face_names)
 
         print(f"\n[INFO] Total enrolled identities: {len(self.known_face_names)}")
         return len(self.known_face_names) > 0
@@ -137,6 +166,8 @@ class FaceRecognitionSystem:
                     data = pickle.load(f)
                 self.known_face_names = data.get("names", [])
                 self.known_face_encodings = data.get("encodings", [])
+                self.encoder.known_names = list(self.known_face_names)
+                self.encoder.known_encodings = list(self.known_face_encodings)
                 print(f"[INFO] Loaded {len(self.known_face_names)} cached encodings from {filename}")
                 return True
             except Exception as err:
@@ -144,7 +175,7 @@ class FaceRecognitionSystem:
                 return False
         return False
 
-    def recognize_face(self, face_encoding: np.ndarray, tolerance: float = 0.6) -> Tuple[str, float]:
+    def recognize_face(self, face_encoding: np.ndarray, tolerance: Optional[float] = None) -> Tuple[str, float]:
         """
         Identify a face encoding by calculating Euclidean distances to all known identities.
 
@@ -156,7 +187,7 @@ class FaceRecognitionSystem:
 
         Args:
             face_encoding (np.ndarray): 128-d vector of newly detected face.
-            tolerance (float): Match threshold. Default 0.6.
+            tolerance (float, optional): Match threshold. Defaults to configured tolerance.
 
         Returns:
             tuple[str, float]: (matched_person_name, confidence_percentage).
@@ -165,6 +196,7 @@ class FaceRecognitionSystem:
 
         name = "Unknown"
         confidence = 0.0
+        tol = self.tolerance if tolerance is None else tolerance
 
         if self.known_face_encodings:
             # Compute Euclidean distances against all enrolled identities
@@ -176,7 +208,7 @@ class FaceRecognitionSystem:
             confidence = max(0.0, (1.0 - min_distance)) * 100.0
 
             # Stricter verification against tolerance
-            if min_distance < tolerance:
+            if min_distance < tol:
                 name = self.known_face_names[best_match_idx]
             else:
                 name = "Unknown"
@@ -186,17 +218,16 @@ class FaceRecognitionSystem:
 
     def run_recognition(self, video_source=0):
         """
-        Run the interactive command-line recognition loop on a video stream.
+        Run the interactive command-line recognition loop on a video stream
+        using camera resolution and interval settings from config.yaml.
 
         Args:
             video_source: Camera index (0) or path to video file.
         """
-        import face_recognition
-
         video_capture = cv2.VideoCapture(video_source)
-        video_capture.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-        video_capture.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-        video_capture.set(cv2.CAP_PROP_FPS, 30)
+        video_capture.set(cv2.CAP_PROP_FRAME_WIDTH, self.cam_width)
+        video_capture.set(cv2.CAP_PROP_FRAME_HEIGHT, self.cam_height)
+        video_capture.set(cv2.CAP_PROP_FPS, self.cam_fps)
         video_capture.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
         if not video_capture.isOpened():
@@ -219,26 +250,17 @@ class FaceRecognitionSystem:
 
             frame_count += 1
 
-            # Performance Optimization:
-            # Process recognition only on every 3rd frame to conserve CPU
-            if frame_count % 3 == 0:
+            # Performance Optimization from config: process 1 of every N frames
+            if frame_count % self.process_interval == 0:
                 # Downscale frame to 25% (1/4 size) for rapid inference
                 small_frame = cv2.resize(frame, (0, 0), fx=0.25, fy=0.25)
                 rgb_small_frame = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
 
-                # Locate faces in downscaled frame
-                self.face_locations = face_recognition.face_locations(
-                    rgb_small_frame, 
-                    number_of_times_to_upsample=1, 
-                    model="hog"
-                )
+                # Locate faces using modular detector
+                self.face_locations = self.detector.detect_faces(rgb_small_frame)
 
                 if self.face_locations:
-                    self.face_encodings = face_recognition.face_encodings(
-                        rgb_small_frame, 
-                        self.face_locations, 
-                        num_jitters=1
-                    )
+                    self.face_encodings = self.encoder.encode_faces(rgb_small_frame, self.face_locations)
                     self.face_names = []
                     self.face_confidences = []
 
@@ -331,10 +353,8 @@ class FaceRecognitionSystem:
 
     def capture_new_face(self, frame: np.ndarray):
         """Enroll a new identity directly from the live video feed."""
-        import face_recognition
-
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        temp_locations = face_recognition.face_locations(rgb_frame)
+        temp_locations = self.detector.detect_faces(rgb_frame)
 
         if not temp_locations:
             print("[WARNING] No face detected in frame. Please reposition.")
@@ -361,7 +381,7 @@ class FaceRecognitionSystem:
         pil_img.save(target_path, 'JPEG', quality=95)
 
         # Compute embedding and enroll
-        encodings = face_recognition.face_encodings(rgb_frame, temp_locations, num_jitters=1)
+        encodings = self.encoder.encode_faces(rgb_frame, temp_locations)
         if encodings:
             self.known_face_encodings.append(encodings[0])
             self.known_face_names.append(clean_name)
@@ -369,6 +389,74 @@ class FaceRecognitionSystem:
             print(f"[SUCCESS] Enrolled {clean_name} into known faces directory.")
         else:
             print("[ERROR] Could not compute face encoding.")
+
+    def add_face_from_frame(self, frame: np.ndarray, name: str) -> bool:
+        """
+        Add a face from a camera frame programmatically.
+
+        Args:
+            frame (np.ndarray): Video frame array in BGR format.
+            name (str): Person's name.
+
+        Returns:
+            bool: True if enrolled successfully; False otherwise.
+        """
+        clean_name = sanitize_identity_name(name)
+        if not clean_name:
+            return False
+
+        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        encodings = self.encoder.encode_faces(rgb_frame, self.detector.detect_faces(rgb_frame))
+
+        if encodings:
+            safe_name = clean_name.replace(" ", "_")
+            os.makedirs("known_faces", exist_ok=True)
+            filename = f"known_faces/{safe_name}.jpg"
+
+            pil_img = Image.fromarray(rgb_frame.astype(np.uint8))
+            pil_img.save(filename, 'JPEG', quality=95)
+
+            self.known_face_encodings.append(encodings[0])
+            self.known_face_names.append(clean_name)
+            self.save_encodings()
+            return True
+        return False
+
+    def add_face_from_image(self, image_path: str, name: str) -> bool:
+        """
+        Add a face from an image file on disk programmatically.
+
+        Args:
+            image_path (str): Filepath to portrait.
+            name (str): Person's name.
+
+        Returns:
+            bool: True if enrolled successfully; False otherwise.
+        """
+        clean_name = sanitize_identity_name(name)
+        if not clean_name:
+            return False
+
+        try:
+            with Image.open(image_path) as pil_img:
+                rgb_img = pil_img.convert('RGB')
+                arr = np.array(rgb_img, dtype=np.uint8)
+
+            encoding = self.encoder.encode_face(arr)
+            if encoding is not None:
+                safe_name = clean_name.replace(" ", "_")
+                os.makedirs("known_faces", exist_ok=True)
+                filename = f"known_faces/{safe_name}.jpg"
+
+                rgb_img.save(filename, 'JPEG', quality=95)
+
+                self.known_face_encodings.append(encoding)
+                self.known_face_names.append(clean_name)
+                self.save_encodings()
+                return True
+        except Exception as err:
+            print(f"[ERROR] Could not enroll from {image_path}: {err}")
+        return False
 
     def remove_face(self, name: str) -> bool:
         """
@@ -393,7 +481,6 @@ class FaceRecognitionSystem:
 
             for candidate in [f"{clean_name}.jpg", f"{safe_filename}.jpg"]:
                 cand_path = (base_dir / candidate).resolve()
-                # Verify cand_path is strictly within base_dir (prevents traversal)
                 if cand_path.is_relative_to(base_dir) and cand_path.exists():
                     try:
                         cand_path.unlink()
