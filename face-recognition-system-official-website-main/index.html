@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Face Recognition System — Enterprise Biometric AI Platform with Multi-Layer Anti-Spoofing, Apple Face ID Guided Enrollment, 60+ FPS YuNet DNN, FastAPI Microservices, and RTSP IP Camera Streaming." />
+  <meta name="keywords" content="face recognition, biometric security, anti-spoofing, apple face id, fastapi, opencv yunet, rtsp streaming, machine learning, AI, python" />
+  <meta name="author" content="Nilay Naha" />
+  <title>Face Recognition System — Enterprise Biometric AI Platform (v2.1.0)</title>
+  <link rel="stylesheet" href="css/style.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@400;500;600;700;800&family=Bungee&family=Fredoka:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+  <!-- Floating Background Elements -->
+  <div class="bg-shapes">
+    <div class="shape cloud c1">☁️</div>
+    <div class="shape cloud c2">☁️</div>
+    <div class="shape star s1">⭐</div>
+    <div class="shape star s2">✨</div>
+    <div class="shape star s3">⭐</div>
+    <div class="shape star s4">✨</div>
+    <div class="shape blob b1"></div>
+    <div class="shape blob b2"></div>
+    <div class="shape blob b3"></div>
+  </div>
+
+  <!-- Navbar -->
+  <nav class="navbar">
+    <div class="nav-brand">
+      <i class="fas fa-camera logo-icon"></i>
+      <span class="logo-text">Face Recognition</span>
+    </div>
+    <ul class="nav-menu" id="nav-menu">
+      <li><a href="#home" class="active">Home</a></li>
+      <li><a href="#features">Features</a></li>
+      <li><a href="#demo">Demo</a></li>
+      <li><a href="#download">Download</a></li>
+      <li><a href="#docs">Docs</a></li>
+      <li><a href="#contact">Contact</a></li>
+    </ul>
+    <a href="#download" class="btn-nav">Get Started</a>
+    <button class="hamburger" id="hamburger" aria-label="menu">
+      <span></span><span></span><span></span>
+    </button>
+  </nav>
+
+  <!-- Hero Section -->
+  <section id="home" class="hero">
+    <div class="hero-content">
+      <span class="badge">🚀 2026 Enterprise Edition • v2.1.0 • 74/74 Tests Passing</span>
+      <h1 class="hero-title">
+        <span class="word w1">Next-Gen</span>
+        <span class="word w2">Biometric</span>
+        <span class="word w3">AI Platform!</span>
+      </h1>
+      <p class="hero-subtitle">
+        Enterprise biometric identification powered by
+        <span class="highlight">Multi-Layer Anti-Spoofing</span> (EAR blink, 2D FFT moiré, 3D pose),
+        <span class="highlight">Apple Face ID</span> multi-angle wizard,
+        <span class="highlight">FastAPI</span> edge microservices, and
+        <span class="highlight">RTSP</span> IP streaming ✨
+      </p>
+      <div class="hero-buttons">
+        <a href="#download" class="btn btn-primary">
+          <i class="fas fa-download"></i>
+          <span>Download Now</span>
+          <span class="btn-arrow">→</span>
+        </a>
+        <a href="https://github.com/AmiNilay/face-recognition-system-version-control" target="_blank" class="btn btn-secondary">
+          <i class="fab fa-github"></i>
+          <span>View on GitHub</span>
+        </a>
+      </div>
+      <div class="hero-stats">
+        <div class="stat">
+          <i class="fas fa-shield-alt"></i>
+          <span class="stat-number">99.2%+</span>
+          <span class="stat-label">Accuracy & Liveness</span>
+        </div>
+        <div class="stat">
+          <i class="fas fa-bolt"></i>
+          <span class="stat-number">60+ FPS</span>
+          <span class="stat-label">YuNet + cKDTree</span>
+        </div>
+        <div class="stat">
+          <i class="fas fa-check-circle"></i>
+          <span class="stat-number">74 / 74</span>
+          <span class="stat-label">Unit Tests Passing</span>
+        </div>
+        <div class="stat">
+          <i class="fas fa-microchip"></i>
+          <span class="stat-number">&lt; 1 ms</span>
+          <span class="stat-label">O(log N) Retrieval</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="hero-visual">
+      <div class="face-card">
+        <div class="demo-header">
+          <span class="dot red"></span>
+          <span class="dot yellow"></span>
+          <span class="dot green"></span>
+          <span class="demo-title">face_recognition_live.py (v2.1.0)</span>
+        </div>
+        <div class="face-frame">
+          <div class="scan-grid"></div>
+          <div class="face-emoji">😀</div>
+          <div class="detection-box">
+            <span class="corner tl"></span>
+            <span class="corner tr"></span>
+            <span class="corner bl"></span>
+            <span class="corner br"></span>
+            <div class="confidence-tag">🟢 99.4% • Liveness PASS</div>
+            <div class="name-tag">Nilay Naha</div>
+          </div>
+          <div class="scanning-line"></div>
+        </div>
+        <div class="face-info">
+          <div class="info-row">
+            <span class="info-label"><i class="fas fa-id-badge"></i> ID:</span>
+            <span class="info-value">EMP_001</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label"><i class="fas fa-shield-virus"></i> Anti-Spoof:</span>
+            <span class="info-value status-active">PASS (EAR + FFT + 3D)</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label"><i class="fas fa-compass"></i> Pose:</span>
+            <span class="info-value">Yaw -1.2° | Pitch +2.1°</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label"><i class="fas fa-bolt"></i> Engine:</span>
+            <span class="info-value">YuNet DNN (60 FPS)</span>
+          </div>
+        </div>
+        <div class="card-shadow"></div>
+      </div>
+      <div class="floating-icon fi1"><i class="fas fa-camera"></i></div>
+      <div class="floating-icon fi2"><i class="fas fa-shield-alt"></i></div>
+      <div class="floating-icon fi3"><i class="fas fa-bolt"></i></div>
+    </div>
+  </section>
+
+  <!-- Wave Divider -->
+  <div class="wave-divider">
+    <svg viewBox="0 0 1440 120" preserveAspectRatio="none">
+      <path d="M0,60 C240,100 480,20 720,60 C960,100 1200,20 1440,60 L1440,120 L0,120 Z" fill="#fff"></path>
+    </svg>
+  </div>
+
+  <!-- Features Section -->
+  <section id="features" class="features">
+    <div class="section-header">
+      <span class="section-emoji">💎</span>
+      <h2 class="section-title">Enterprise Features</h2>
+      <p class="section-subtitle">Comprehensive 2026 biometric AI architecture and security suite</p>
+    </div>
+
+    <div class="feature-grid">
+      <!-- 1: Anti-Spoofing -->
+      <div class="feature-card" data-color="pink">
+        <div class="feature-icon"><i class="fas fa-shield-virus"></i></div>
+        <h3>Multi-Layer Anti-Spoofing</h3>
+        <p>Dynamic EAR blink detection, 2D FFT screen moiré replay defense, and 3D solvePnP Euler angle head-pose verification with nose ray tracking.</p>
+        <div class="card-bounce"></div>
+      </div>
+
+      <!-- 2: Apple Face ID Wizard -->
+      <div class="feature-card" data-color="yellow">
+        <div class="feature-icon"><i class="fas fa-id-card-clip"></i></div>
+        <h3>Apple Face ID Guided Wizard</h3>
+        <p>Interactive 36-segment circular HUD guiding Frontal, Left, Right, Up, and Down angles to build robust L2-normalized Fréchet centroid vectors.</p>
+        <div class="card-bounce"></div>
+      </div>
+
+      <!-- 3: Spatial Retrieval -->
+      <div class="feature-card" data-color="green">
+        <div class="feature-icon"><i class="fas fa-bolt"></i></div>
+        <h3>O(log N) Spatial Retrieval</h3>
+        <p>SciPy cKDTree Euclidean nearest-neighbor index delivering sub-millisecond recognition across 10,000+ faces at 60+ FPS via YuNet DNN.</p>
+        <div class="card-bounce"></div>
+      </div>
+
+      <!-- 4: FastAPI Microservice -->
+      <div class="feature-card" data-color="blue">
+        <div class="feature-icon"><i class="fas fa-network-wired"></i></div>
+        <h3>FastAPI Edge Microservice</h3>
+        <p>High-throughput asynchronous REST API and real-time WebSockets with interactive OpenAPI Swagger UI (/docs) and ReDoc (/redoc).</p>
+        <div class="card-bounce"></div>
+      </div>
+
+      <!-- 5: RTSP & Motion Gating -->
+      <div class="feature-card" data-color="purple">
+        <div class="feature-icon"><i class="fas fa-video"></i></div>
+        <h3>RTSP Stream & Motion Gating</h3>
+        <p>Threaded IP camera stream with zero-latency buffer-drop and OpenCV MOG2 motion gating reducing idle CPU power consumption by over 90%.</p>
+        <div class="card-bounce"></div>
+      </div>
+
+      <!-- 6: Cryptographic Security -->
+      <div class="feature-card" data-color="orange">
+        <div class="feature-icon"><i class="fas fa-lock"></i></div>
+        <h3>AES-256 Fernet & Audit Logs</h3>
+        <p>Encrypted biometric templates (.dat), path traversal sanitization, and tamper-evident SHA-256 chained cryptographic audit trails.</p>
+        <div class="card-bounce"></div>
+      </div>
+
+      <!-- 7: Speech Synthesizer -->
+      <div class="feature-card" data-color="teal">
+        <div class="feature-icon"><i class="fas fa-volume-high"></i></div>
+        <h3>Offline TTS Voice Announcer</h3>
+        <p>Integrated AudioAnnouncer speech engine providing natural voice greetings ("Access Granted, Welcome Nilay!") with zero cloud dependencies.</p>
+        <div class="card-bounce"></div>
+      </div>
+
+      <!-- 8: Attendance Analytics -->
+      <div class="feature-card" data-color="indigo">
+        <div class="feature-icon"><i class="fas fa-chart-pie"></i></div>
+        <h3>Executive HTML Analytics</h3>
+        <p>Automated attendance tracking with Indian Standard Time (IST) logging, exportable to Apple-styled executive HTML dashboards and CSV.</p>
+        <div class="card-bounce"></div>
+      </div>
+
+      <!-- 9: Security Webhooks -->
+      <div class="feature-card" data-color="red">
+        <div class="feature-icon"><i class="fas fa-bell"></i></div>
+        <h3>Real-time Security Webhooks</h3>
+        <p>Instant asynchronous HTTP dispatch for access-control IoT door relays, Slack alerts, and Discord channel security notifications.</p>
+        <div class="card-bounce"></div>
+      </div>
+
+      <!-- 10: 74/74 Unit Tests -->
+      <div class="feature-card" data-color="emerald">
+        <div class="feature-icon"><i class="fas fa-clipboard-check"></i></div>
+        <h3>74 / 74 Verified Tests</h3>
+        <p>Complete pytest test suite with 100% passing automated verification across API, Face ID wizard, RTSP streaming, and encryption.</p>
+        <div class="card-bounce"></div>
+      </div>
+
+      <!-- 11: One-Click Launchers -->
+      <div class="feature-card" data-color="cyan">
+        <div class="feature-icon"><i class="fas fa-terminal"></i></div>
+        <h3>One-Click Batch Launchers</h3>
+        <p>Instant execution scripts: run_gui.bat, run_api.bat, run_face_id_wizard.bat, and run_rtsp_stream.bat for plug-and-play operation.</p>
+        <div class="card-bounce"></div>
+      </div>
+
+      <!-- 12: Challenge Response -->
+      <div class="feature-card" data-color="amber">
+        <div class="feature-icon"><i class="fas fa-arrows-spin"></i></div>
+        <h3>Challenge-Response Mode</h3>
+        <p>Interactive anti-spoofing challenge prompts (random blinks, directional head turns) defeating pre-recorded video injection attacks.</p>
+        <div class="card-bounce"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Demo Section -->
+  <section id="demo" class="demo">
+    <div class="section-header">
+      <span class="section-emoji">📸</span>
+      <h2 class="section-title">Interactive Showcase</h2>
+      <p class="section-subtitle">Explore the desktop app, enrollment wizard, REST API, and RTSP stream</p>
+    </div>
+
+    <div class="demo-showcase">
+      <div class="demo-tabs">
+        <button class="tab-btn active" data-tab="gui">🖼️ Desktop GUI</button>
+        <button class="tab-btn" data-tab="faceid">📱 Face ID Wizard</button>
+        <button class="tab-btn" data-tab="api">🌐 FastAPI Swagger</button>
+        <button class="tab-btn" data-tab="rtsp">📹 RTSP & Motion</button>
+        <button class="tab-btn" data-tab="cli">💻 Launchers & CLI</button>
+      </div>
+
+      <div class="demo-content-area">
+        <!-- GUI Tab -->
+        <div class="tab-content active" id="gui-tab">
+          <div class="demo-preview">
+            <h3><i class="fas fa-desktop"></i> Modern Apple-Inspired Dark GUI</h3>
+            <p class="demo-description">Real-time video canvas with color-coded bounding boxes, live anti-spoofing feedback, and voice announcements.</p>
+
+            <div class="screenshot-container">
+              <img src="assets/FRC SS.png"
+                   alt="Face Recognition System - GUI Interface"
+                   class="screenshot-img"
+                   loading="lazy"
+                   onerror="this.style.display='none'; this.parentElement.classList.add('img-error');" />
+              <div class="screenshot-fallback">
+                <i class="fas fa-image"></i>
+                <p>Screenshot: FRC SS.png</p>
+              </div>
+            </div>
+
+            <ul class="feature-list">
+              <li><i class="fas fa-check"></i> 60+ FPS real-time detection & recognition</li>
+              <li><i class="fas fa-check"></i> Multi-layer anti-spoofing badge (EAR + FFT + 3D)</li>
+              <li><i class="fas fa-check"></i> Offline TTS voice greetings ("Access Granted!")</li>
+              <li><i class="fas fa-check"></i> Instant attendance export to CSV and HTML</li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- Face ID Wizard Tab -->
+        <div class="tab-content" id="faceid-tab">
+          <div class="demo-preview">
+            <h3><i class="fas fa-id-card-clip"></i> Apple Face ID Multi-Angle Enrollment Wizard</h3>
+            <p class="demo-description">Interactive 36-segment circular HUD with 5-pose angular calibration (Yaw ±25°, Pitch ±18°) and Frechet centroid vectors.</p>
+
+            <div class="faceid-hud-box">
+              <div class="hud-ring-wrapper">
+                <div class="hud-circle"></div>
+                <div class="hud-avatar">👤</div>
+              </div>
+              <div class="hud-status">POSES: 5 / 5 COMPLETE (100%)</div>
+              <div class="hud-angle">Frontal ✓ | Left (-25°) ✓ | Right (+25°) ✓ | Up (+18°) ✓ | Down (-18°) ✓</div>
+            </div>
+
+            <ul class="feature-list">
+              <li><i class="fas fa-check"></i> 36-segment green circular progress HUD</li>
+              <li><i class="fas fa-check"></i> Real-time 3D solvePnP head-pose angle feedback</li>
+              <li><i class="fas fa-check"></i> Multi-angle L2-normalized Frechet centroid computation</li>
+              <li><i class="fas fa-check"></i> Launch with <code>run_face_id_wizard.bat</code></li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- FastAPI Swagger Tab -->
+        <div class="tab-content" id="api-tab">
+          <div class="demo-preview">
+            <h3><i class="fas fa-network-wired"></i> FastAPI Edge Microservice & WebSockets</h3>
+            <p class="demo-description">Production-ready async REST API with interactive Swagger UI (/docs) and WebSocket video stream broadcasting.</p>
+
+            <div class="api-endpoints-list">
+              <div class="api-endpoint-item">
+                <span class="method-tag post">POST</span>
+                <span class="endpoint-path">/api/v1/recognize</span>
+                <span class="endpoint-desc">Recognize face with liveness analysis</span>
+              </div>
+              <div class="api-endpoint-item">
+                <span class="method-tag post">POST</span>
+                <span class="endpoint-path">/api/v1/enroll/composite</span>
+                <span class="endpoint-desc">5-pose Apple Face ID composite enrollment</span>
+              </div>
+              <div class="api-endpoint-item">
+                <span class="method-tag post">POST</span>
+                <span class="endpoint-path">/api/v1/liveness</span>
+                <span class="endpoint-desc">Verify EAR blink, 2D FFT moiré & 3D pose</span>
+              </div>
+              <div class="api-endpoint-item">
+                <span class="method-tag get">GET</span>
+                <span class="endpoint-path">/api/v1/health</span>
+                <span class="endpoint-desc">System health, template counts & hardware status</span>
+              </div>
+              <div class="api-endpoint-item">
+                <span class="method-tag ws">WS</span>
+                <span class="endpoint-path">/ws/stream</span>
+                <span class="endpoint-desc">Real-time WebSocket video frame & event stream</span>
+              </div>
+            </div>
+
+            <ul class="feature-list">
+              <li><i class="fas fa-check"></i> Interactive OpenAPI Swagger UI at <code>/docs</code></li>
+              <li><i class="fas fa-check"></i> Async ASGI server running on Uvicorn</li>
+              <li><i class="fas fa-check"></i> High-throughput JSON endpoints for mobile & IoT</li>
+              <li><i class="fas fa-check"></i> Launch with <code>run_api.bat</code> (Port 8000)</li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- RTSP & Motion Tab -->
+        <div class="tab-content" id="rtsp-tab">
+          <div class="demo-preview">
+            <h3><i class="fas fa-video"></i> RTSP IP Camera Streaming & MOG2 Motion Gating</h3>
+            <p class="demo-description">Threaded zero-latency buffer drop with OpenCV MOG2 background motion gating, slashing idle CPU by over 90%.</p>
+
+            <div class="code-preview">
+              <div class="code-header">
+                <div class="code-dots">
+                  <span class="dot red"></span>
+                  <span class="dot yellow"></span>
+                  <span class="dot green"></span>
+                </div>
+                <span class="code-title">RTSP Stream Monitor — logs/rtsp_stream.log</span>
+              </div>
+              <pre><code><span class="c-command">[INFO]</span> RTSP Stream initialized: rtsp://192.168.1.100:554/live
+<span class="c-command">[INFO]</span> cv2.CAP_PROP_BUFFERSIZE set to 1 (Zero-Latency Frame Buffer)
+<span class="c-string">[POWER]</span> MOG2 Motion Gating: NO MOTION detected (Idle power-saving mode active)
+<span class="c-number">[EVENT]</span> Motion threshold exceeded (Area: 1,420px) -> Awakening DNN recognition pipeline!
+<span class="c-command">[WEBHOOK]</span> Dispatching HTTP POST to https://company.internal/security/webhook
+<span class="c-string">[SUCCESS]</span> Webhook delivered: 200 OK (Latency: 14ms)</code></pre>
+            </div>
+
+            <ul class="feature-list">
+              <li><i class="fas fa-check"></i> Automatic reconnection with exponential backoff</li>
+              <li><i class="fas fa-check"></i> 90%+ idle compute reduction via MOG2 gating</li>
+              <li><i class="fas fa-check"></i> Multi-endpoint HTTP webhook security dispatch</li>
+              <li><i class="fas fa-check"></i> Launch with <code>run_rtsp_stream.bat</code></li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- CLI & Launchers Tab -->
+        <div class="tab-content" id="cli-tab">
+          <div class="demo-preview">
+            <h3><i class="fas fa-terminal"></i> One-Click Windows Launchers & CLI</h3>
+            <p class="demo-description">Pre-configured batch scripts and commands for instant plug-and-play execution.</p>
+
+            <div class="scripts-grid">
+              <div class="script-card">
+                <strong>run_gui.bat</strong>
+                <span>Launches modern desktop dark GUI with real-time HUD</span>
+              </div>
+              <div class="script-card">
+                <strong>run_api.bat</strong>
+                <span>Starts FastAPI server on http://localhost:8000</span>
+              </div>
+              <div class="script-card">
+                <strong>run_face_id_wizard.bat</strong>
+                <span>Opens Apple Face ID 36-segment enrollment wizard</span>
+              </div>
+              <div class="script-card">
+                <strong>run_rtsp_stream.bat</strong>
+                <span>Launches IP camera stream with MOG2 motion gating</span>
+              </div>
+            </div>
+
+            <div class="code-preview">
+              <div class="code-header">
+                <div class="code-dots">
+                  <span class="dot red"></span>
+                  <span class="dot yellow"></span>
+                  <span class="dot green"></span>
+                </div>
+                <span class="code-title">pytest — 74 Unit Tests Passing</span>
+              </div>
+              <pre><code><span class="c-command">$</span> pytest tests/ -v
+<span class="c-string">============================== test session starts ==============================</span>
+collected 74 items
+
+tests/test_api.py ..................                             <span class="c-number">[ 24%]</span>
+tests/test_composite_enrollment.py .........                    <span class="c-number">[ 36%]</span>
+tests/test_rtsp_webhooks.py ........                            <span class="c-number">[ 47%]</span>
+tests/test_face_recognition.py ................................ <span class="c-number">[ 90%]</span>
+tests/test_security_audit.py .......                            <span class="c-number">[100%]</span>
+
+<span class="c-number">========================= 74 passed in 2.08s =========================</span></code></pre>
+            </div>
+
+            <ul class="feature-list">
+              <li><i class="fas fa-check"></i> 74 / 74 automated unit tests passing</li>
+              <li><i class="fas fa-check"></i> Full CLI arguments (<code>--api</code>, <code>--port</code>, <code>--host</code>)</li>
+              <li><i class="fas fa-check"></i> Offline execution with zero external telemetry</li>
+              <li><i class="fas fa-check"></i> Plug-and-play batch launchers for Windows</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Download Section -->
+  <section id="download" class="download">
+    <div class="section-header">
+      <span class="section-emoji">⚙️</span>
+      <h2 class="section-title">Get Started!</h2>
+      <p class="section-subtitle">Choose your preferred launch or installation method</p>
+    </div>
+
+    <div class="download-cards">
+      <!-- One-Click Launchers -->
+      <div class="download-card featured">
+        <div class="download-header">
+          <div class="dl-icon"><i class="fas fa-rocket"></i></div>
+          <h3>One-Click Launchers</h3>
+          <span class="badge-rec">Recommended</span>
+        </div>
+        <p>Instant plug-and-play batch scripts for Windows</p>
+        <ol class="install-steps">
+          <li><i class="fas fa-circle step-dot"></i> <strong>run_gui.bat</strong> — Desktop Dark GUI</li>
+          <li><i class="fas fa-circle step-dot"></i> <strong>run_api.bat</strong> — FastAPI Server (:8000)</li>
+          <li><i class="fas fa-circle step-dot"></i> <strong>run_face_id_wizard.bat</strong> — Apple Face ID</li>
+          <li><i class="fas fa-circle step-dot"></i> <strong>run_rtsp_stream.bat</strong> — RTSP Stream</li>
+        </ol>
+        <a href="https://github.com/AmiNilay/face-recognition-system-version-control/archive/refs/heads/main.zip" class="btn btn-primary btn-full">
+          <i class="fas fa-download"></i> Download v2.1.0 ZIP
+        </a>
+      </div>
+
+      <!-- GitHub Clone -->
+      <div class="download-card">
+        <div class="download-header">
+          <div class="dl-icon github"><i class="fab fa-github"></i></div>
+          <h3>From GitHub</h3>
+        </div>
+        <p>Clone the repository and run automated setup</p>
+        <div class="code-box">
+          <code>git clone https://github.com/AmiNilay/face-recognition-system-version-control.git
+cd face-recognition-system-version-control
+./INSTALL.bat</code>
+          <button class="copy-btn" onclick="copyCode(this)" title="Copy">
+            <i class="fas fa-copy"></i>
+          </button>
+        </div>
+        <a href="https://github.com/AmiNilay/face-recognition-system-version-control" target="_blank" class="btn btn-secondary btn-full">
+          <i class="fab fa-github"></i> View Repository
+        </a>
+      </div>
+
+      <!-- Manual Install -->
+      <div class="download-card">
+        <div class="download-header">
+          <div class="dl-icon terminal"><i class="fas fa-terminal"></i></div>
+          <h3>Manual Install</h3>
+        </div>
+        <p>Install full dependencies and run verification</p>
+        <div class="code-box">
+          <code>pip install -r requirements.txt
+pytest tests/ -v</code>
+          <button class="copy-btn" onclick="copyCode(this)" title="Copy">
+            <i class="fas fa-copy"></i>
+          </button>
+        </div>
+        <a href="https://github.com/AmiNilay/face-recognition-system-version-control/blob/main/Face%20Recognition%20System%20DOC.docx" target="_blank" class="btn btn-secondary btn-full">
+          <i class="fas fa-book"></i> Read Word DOCX
+        </a>
+      </div>
+    </div>
+
+    <!-- System Requirements -->
+    <div class="system-requirements">
+      <h3><i class="fas fa-laptop"></i> System Requirements</h3>
+      <div class="requirements-grid">
+        <div class="requirement">
+          <i class="fas fa-laptop req-icon"></i>
+          <div>
+            <strong>OS:</strong>
+            <span>Windows 10/11, Linux, macOS</span>
+          </div>
+        </div>
+        <div class="requirement">
+          <i class="fab fa-python req-icon"></i>
+          <div>
+            <strong>Python:</strong>
+            <span>3.10 or higher</span>
+          </div>
+        </div>
+        <div class="requirement">
+          <i class="fas fa-memory req-icon"></i>
+          <div>
+            <strong>RAM:</strong>
+            <span>4GB minimum (8GB recommended)</span>
+          </div>
+        </div>
+        <div class="requirement">
+          <i class="fas fa-camera req-icon"></i>
+          <div>
+            <strong>Video Input:</strong>
+            <span>USB Webcam or RTSP IP Camera</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Documentation Section -->
+  <section id="docs" class="docs">
+    <div class="section-header">
+      <span class="section-emoji">📚</span>
+      <h2 class="section-title">Documentation</h2>
+      <p class="section-subtitle">Guides, API specifications, and technical reference</p>
+    </div>
+
+    <div class="docs-grid">
+      <a href="https://github.com/AmiNilay/face-recognition-system-version-control/blob/main/docs/USER_GUIDE.md" class="doc-card" target="_blank">
+        <div class="doc-icon"><i class="fas fa-rocket"></i></div>
+        <h3>Quick Start Guide</h3>
+        <p>Get up and running with one-click scripts</p>
+        <span class="doc-arrow">→</span>
+      </a>
+      <a href="https://github.com/AmiNilay/face-recognition-system-version-control/blob/main/docs/API.md" class="doc-card" target="_blank">
+        <div class="doc-icon"><i class="fas fa-code"></i></div>
+        <h3>FastAPI Spec & Docs</h3>
+        <p>Interactive Swagger & REST endpoints</p>
+        <span class="doc-arrow">→</span>
+      </a>
+      <a href="https://github.com/AmiNilay/face-recognition-system-version-control/blob/main/Face%20Recognition%20System%20DOC.docx" class="doc-card" target="_blank">
+        <div class="doc-icon"><i class="fas fa-file-word"></i></div>
+        <h3>Technical DOCX</h3>
+        <p>Complete 2026 enterprise architecture</p>
+        <span class="doc-arrow">→</span>
+      </a>
+      <a href="https://github.com/AmiNilay/face-recognition-system-version-control/blob/main/config/config.yaml" class="doc-card" target="_blank">
+        <div class="doc-icon"><i class="fas fa-cog"></i></div>
+        <h3>Configuration</h3>
+        <p>Liveness, RTSP, and recognition tuning</p>
+        <span class="doc-arrow">→</span>
+      </a>
+      <a href="https://github.com/AmiNilay/face-recognition-system-version-control/tree/main/tests" class="doc-card" target="_blank">
+        <div class="doc-icon"><i class="fas fa-check-double"></i></div>
+        <h3>74 Unit Tests</h3>
+        <p>Automated test suite & verification</p>
+        <span class="doc-arrow">→</span>
+      </a>
+      <a href="https://github.com/AmiNilay/face-recognition-system-version-control/issues" class="doc-card" target="_blank">
+        <div class="doc-icon"><i class="fas fa-question-circle"></i></div>
+        <h3>FAQ & Support</h3>
+        <p>Troubleshooting and community help</p>
+        <span class="doc-arrow">→</span>
+      </a>
+    </div>
+  </section>
+
+  <!-- Contact Section -->
+  <section id="contact" class="contact">
+    <div class="section-header">
+      <span class="section-emoji">💬</span>
+      <h2 class="section-title">Get In Touch!</h2>
+      <p class="section-subtitle">Have questions or enterprise feature requests? We'd love to hear from you</p>
+    </div>
+
+    <div class="contact-info">
+      <a href="https://github.com/AmiNilay" target="_blank" class="info-card">
+        <div class="info-icon"><i class="fab fa-github"></i></div>
+        <h3>GitHub</h3>
+        <span class="info-link">@AmiNilay</span>
+      </a>
+      <a href="https://github.com/AmiNilay/face-recognition-system-version-control" target="_blank" class="info-card">
+        <div class="info-icon"><i class="fas fa-code-branch"></i></div>
+        <h3>Repository</h3>
+        <span class="info-link">View Project</span>
+      </a>
+      <a href="https://github.com/AmiNilay/face-recognition-system-version-control/issues" target="_blank" class="info-card">
+        <div class="info-icon"><i class="fas fa-bug"></i></div>
+        <h3>Report Issues</h3>
+        <span class="info-link">Issue Tracker</span>
+      </a>
+      <a href="https://github.com/AmiNilay/face-recognition-system-version-control" target="_blank" class="info-card">
+        <div class="info-icon"><i class="fas fa-star"></i></div>
+        <h3>Support</h3>
+        <span class="info-link">Star on GitHub</span>
+      </a>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="footer-content">
+      <div class="footer-section">
+        <h3 class="footer-logo">
+          <i class="fas fa-camera"></i> Face Recognition System
+        </h3>
+        <p>Enterprise Biometric AI Platform with Multi-Layer Anti-Spoofing, Apple Face ID Wizard, FastAPI Microservices & RTSP Streaming</p>
+        <div class="social-links">
+          <a href="https://github.com/AmiNilay" target="_blank" aria-label="GitHub">
+            <i class="fab fa-github"></i>
+          </a>
+        </div>
+      </div>
+
+      <div class="footer-section">
+        <h4>Quick Links</h4>
+        <ul>
+          <li><a href="#features">Features</a></li>
+          <li><a href="#demo">Interactive Demo</a></li>
+          <li><a href="#download">Download</a></li>
+          <li><a href="#docs">Documentation</a></li>
+          <li><a href="#contact">Contact</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-section">
+        <h4>Resources</h4>
+        <ul>
+          <li><a href="https://github.com/AmiNilay/face-recognition-system-version-control" target="_blank">GitHub Repository</a></li>
+          <li><a href="https://github.com/AmiNilay/face-recognition-system-version-control/issues" target="_blank">Issues & Discussions</a></li>
+          <li><a href="https://github.com/AmiNilay/face-recognition-system-version-control/blob/main/README.md" target="_blank">Project README</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-section">
+        <h4>Technologies</h4>
+        <ul>
+          <li>Python 3.10+</li>
+          <li>FastAPI & Uvicorn</li>
+          <li>OpenCV YuNet DNN</li>
+          <li>SciPy cKDTree Indexing</li>
+          <li>AES-256 Fernet Encryption</li>
+          <li>pyttsx3 Speech Synthesizer</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="footer-bottom">
+      <p>&copy; 2026 Face Recognition System (v2.1.0 Enterprise). Created with 💜 by <a href="https://github.com/AmiNilay" target="_blank">Nilay Naha</a></p>
+      <p>Licensed under MIT License</p>
+    </div>
+  </footer>
+
+  <!-- Scroll to Top Button -->
+  <button id="scroll-top" class="scroll-top" aria-label="Scroll to top">
+    <i class="fas fa-arrow-up"></i>
+  </button>
+
+  <script src="js/main.js"></script>
+</body>
+</html>
