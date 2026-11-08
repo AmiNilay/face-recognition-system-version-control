@@ -36,3 +36,6 @@ anti_spoofing:
   consecutive_closed_frames: 2  # Minimum consecutive frames below threshold to count as blink
   texture_analysis: true        # Screen moire / digital screen replay detection
   privacy_blur_bystanders: false # Automatic Gaussian blur on unknown / bystander faces
+  head_pose: true               # 3D Head pose estimation (solvePnP Euler angles & nose ray)
+  challenge_response: false     # Interactive challenge-response mode (turn left/right, nod down)
+  challenge_timeout: 5.0        # Timeout in seconds to complete dynamic liveness challenges

@@ -294,17 +294,33 @@ class FaceRecognitionSystem:
 
                 if self.face_locations:
                     self.face_encodings = self.encoder.encode_faces(rgb_small_frame, self.face_locations)
+                    # Extract 68-point landmarks for anti-spoofing and 3D head pose estimation
+                    landmarks_list = face_recognition.face_landmarks(rgb_small_frame, self.face_locations)
                     self.face_names = []
                     self.face_confidences = []
+                    self.face_liveness = []
+                    h_f, w_f = frame.shape[:2]
 
-                    for enc in self.face_encodings:
+                    for idx, enc in enumerate(self.face_encodings):
                         name, conf = self.recognize_face(enc)
                         self.face_names.append(name)
                         self.face_confidences.append(conf)
+
+                        top_s, right_s, bottom_s, left_s = self.face_locations[idx]
+                        y1, y2 = max(0, top_s * 4), min(h_f, bottom_s * 4)
+                        x1, x2 = max(0, left_s * 4), min(w_f, right_s * 4)
+                        face_crop = frame[y1:y2, x1:x2] if (y2 > y1 and x2 > x1) else None
+
+                        lms = landmarks_list[idx] if idx < len(landmarks_list) else None
+                        liveness_res = self.anti_spoof.verify_liveness(
+                            name, face_crop, lms, frame_shape=(h_f, w_f), scale=4.0
+                        )
+                        self.face_liveness.append(liveness_res)
                 else:
                     self.face_encodings = []
                     self.face_names = []
                     self.face_confidences = []
+                    self.face_liveness = []
 
             # Draw visual bounding boxes and HUD stats on full-sized frame
             self.draw_results(frame)
@@ -369,6 +385,7 @@ class FaceRecognitionSystem:
             # Render liveness indicator banner above top bounding box
             liveness = self.face_liveness[i] if i < len(self.face_liveness) else None
             if liveness:
+                # 1. Primary status / challenge banner
                 cv2.putText(
                     frame,
                     liveness.status_text,
@@ -378,6 +395,25 @@ class FaceRecognitionSystem:
                     liveness.hud_color,
                     1
                 )
+
+                # 2. 3D Head Pose Euler angles (Yaw, Pitch, Roll)
+                if liveness.head_pose is not None:
+                    yaw_val, pitch_val, roll_val = liveness.head_pose
+                    pose_text = f"Y:{yaw_val:+.0f} P:{pitch_val:+.0f} R:{roll_val:+.0f}"
+                    cv2.putText(
+                        frame,
+                        pose_text,
+                        (left, max(top - 26, 10)),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.4,
+                        (200, 255, 200),
+                        1
+                    )
+
+                # 3. 3D projected nose ray vector
+                if liveness.nose_ray is not None:
+                    p_start, p_end = liveness.nose_ray
+                    cv2.arrowedLine(frame, p_start, p_end, (0, 255, 255), 2, tipLength=0.2)
 
         # Draw HUD text telemetry in top-left corner
         cv2.putText(frame, f"Faces: {len(self.face_locations)}", 

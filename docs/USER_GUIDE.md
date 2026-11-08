@@ -110,4 +110,27 @@ face_recognition:
   tolerance: 0.6     # 0.5 = stricter match, 0.7 = looser match
   model: 'hog'       # 'hog' (fast CPU) or 'cnn' (GPU)
   process_interval: 3 # Process 1 out of every 3 frames to save CPU
+
+anti_spoofing:
+  enabled: true                 # Master toggle for biometric liveness verification
+  ear_threshold: 0.22           # Eye Aspect Ratio threshold for blink detection
+  consecutive_closed_frames: 2  # Minimum frames below threshold to count as blink
+  texture_analysis: true        # Screen moire / digital screen replay detection
+  privacy_blur_bystanders: false # Automatic Gaussian blur on unknown / bystander faces
+  head_pose: true               # 3D Head pose estimation (solvePnP Euler angles & nose ray)
+  challenge_response: false     # Interactive challenge-response mode (turn left/right, nod down)
+  challenge_timeout: 5.0        # Timeout in seconds to complete dynamic liveness challenges
 ```
+
+---
+
+## 7. Advanced Biometric Anti-Spoofing & Liveness
+
+The system features multi-layered anti-spoofing defense against presentation attacks:
+
+1. **Eye Aspect Ratio (EAR) Blink Verification:** Defeats static printed photos by requiring natural eyelid closure cycles.
+2. **2D FFT Screen Moiré Analysis:** Defeats digital screen replays (smartphones, iPads, laptops) by detecting sub-pixel LCD/OLED high-frequency lattice patterns.
+3. **3D Head Pose Estimation (solvePnP):** Estimates 3D Euler angles (Yaw, Pitch, Roll) by solving the Perspective-n-Point problem against an anthropometric skull model and projects a forward 3D direction ray from the nose tip.
+4. **Interactive Challenge-Response Mode:** Issues dynamic motion challenges (e.g. `TURN HEAD LEFT`, `TURN HEAD RIGHT`, `NOD HEAD DOWN`) within a countdown window to defeat deepfake video replay loops.
+5. **GDPR Privacy Mode:** Automatically applies 51x51 Gaussian blur to unverified bystanders walking behind enrolled subjects.
+

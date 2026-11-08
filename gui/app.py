@@ -367,6 +367,20 @@ class FaceRecognitionGUI:
             variable=self.privacy_blur_var,
             command=self.toggle_privacy_blur
         )
+        head_pose_enabled = bool(getattr(getattr(self.system, 'anti_spoof', None), 'head_pose_enabled', True))
+        self.head_pose_var = tk.BooleanVar(value=head_pose_enabled)
+        settings_menu.add_checkbutton(
+            label="3D Head Pose Estimation (solvePnP)",
+            variable=self.head_pose_var,
+            command=self.toggle_head_pose
+        )
+        challenge_enabled = bool(getattr(getattr(self.system, 'anti_spoof', None), 'challenge_response_enabled', False))
+        self.challenge_var = tk.BooleanVar(value=challenge_enabled)
+        settings_menu.add_checkbutton(
+            label="Interactive Challenge-Response Mode",
+            variable=self.challenge_var,
+            command=self.toggle_challenge_response
+        )
         settings_menu.add_separator()
         settings_menu.add_command(label="Set Recognition Cooldown...", command=self.set_cooldown)
 
@@ -552,7 +566,9 @@ class FaceRecognitionGUI:
                             face_crop = frame[y1:y2, x1:x2] if (y2 > y1 and x2 > x1) else None
 
                             lms = landmarks_list[i] if i < len(landmarks_list) else None
-                            liveness_res = self.system.anti_spoof.verify_liveness(name, face_crop, lms)
+                            liveness_res = self.system.anti_spoof.verify_liveness(
+                                name, face_crop, lms, frame_shape=frame.shape[:2], scale=4.0
+                            )
                             self.system.face_liveness.append(liveness_res)
 
                             self.logger.debug(
@@ -587,7 +603,9 @@ class FaceRecognitionGUI:
                         'names': list(self.system.face_names),
                         'locations': list(self.system.face_locations),
                         'confidences': list(self.system.face_confidences),
-                        'liveness': [r.status_text for r in self.system.face_liveness]
+                        'liveness': [r.status_text for r in self.system.face_liveness],
+                        'poses': [r.head_pose for r in self.system.face_liveness],
+                        'challenges': [r.challenge_prompt for r in self.system.face_liveness]
                     }
 
                 # Yield CPU briefly to prevent thread starvation
@@ -650,6 +668,8 @@ class FaceRecognitionGUI:
             locations = telemetry.get('locations', [])
             confidences = telemetry.get('confidences', [])
             liveness_list = telemetry.get('liveness', [])
+            poses = telemetry.get('poses', [])
+            challenges = telemetry.get('challenges', [])
 
             count = len(locations)
             if count == 0:
@@ -660,6 +680,8 @@ class FaceRecognitionGUI:
                 for i, name in enumerate(names):
                     conf = confidences[i] if i < len(confidences) else 0.0
                     live_str = liveness_list[i] if i < len(liveness_list) else ""
+                    pose = poses[i] if i < len(poses) else None
+                    chal = challenges[i] if i < len(challenges) else None
 
                     if name != "Unknown":
                         if conf >= 70.0:
@@ -674,6 +696,10 @@ class FaceRecognitionGUI:
 
                     if live_str:
                         info_lines.append(f"  {live_str}")
+                    if pose:
+                        info_lines.append(f"  Pose: Y:{pose[0]:+.0f} P:{pose[1]:+.0f} R:{pose[2]:+.0f}")
+                    if chal:
+                        info_lines.append(f"  Task: {chal}")
 
                 # Show average confidence score
                 valid_confs = [c for c in confidences if c > 0.0]
@@ -701,6 +727,20 @@ class FaceRecognitionGUI:
         state = "Enabled" if self.system.anti_spoof.privacy_blur_enabled else "Disabled"
         self.update_status(f"Privacy Mode (Bystander Blur): {state}")
         self.logger.info(f"Privacy Mode toggled: {state}")
+
+    def toggle_head_pose(self):
+        """Toggle 3D head pose estimation."""
+        self.system.anti_spoof.head_pose_enabled = self.head_pose_var.get()
+        state = "Enabled" if self.system.anti_spoof.head_pose_enabled else "Disabled"
+        self.update_status(f"3D Head Pose: {state}")
+        self.logger.info(f"3D Head Pose estimation toggled: {state}")
+
+    def toggle_challenge_response(self):
+        """Toggle interactive anti-spoofing challenge-response mode."""
+        self.system.anti_spoof.challenge_response_enabled = self.challenge_var.get()
+        state = "Enabled" if self.system.anti_spoof.challenge_response_enabled else "Disabled"
+        self.update_status(f"Challenge-Response: {state}")
+        self.logger.info(f"Challenge-Response mode toggled: {state}")
 
     def update_detection_info(self):
         """Backward compatibility wrapper for updating detection telemetry."""

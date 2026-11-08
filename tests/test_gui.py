@@ -80,5 +80,38 @@ class TestFaceRecognitionGUI(unittest.TestCase):
         self.assertEqual(str(self.app.start_btn['state']), 'normal')
         self.assertEqual(str(self.app.stop_btn['state']), 'disabled')
 
+    def test_anti_spoof_extension_toggles(self):
+        """Verify 3D head pose and challenge response menu toggles."""
+        mock_as = MagicMock()
+        mock_as.head_pose_enabled = True
+        mock_as.challenge_response_enabled = False
+        self.app.system.anti_spoof = mock_as
+
+        # Toggle head pose off
+        self.app.head_pose_var.set(False)
+        self.app.toggle_head_pose()
+        self.assertFalse(mock_as.head_pose_enabled)
+
+        # Toggle challenge response on
+        self.app.challenge_var.set(True)
+        self.app.toggle_challenge_response()
+        self.assertTrue(mock_as.challenge_response_enabled)
+
+    def test_telemetry_with_pose_and_challenge(self):
+        """Verify detection telemetry displays pose angles and challenge tasks."""
+        test_telemetry = {
+            'names': ['Alice'],
+            'locations': [(10, 90, 90, 10)],
+            'confidences': [92.0],
+            'liveness': ['[CHALLENGE] TURN HEAD LEFT (4.1s)'],
+            'poses': [(-15.2, 3.4, 0.5)],
+            'challenges': ['TURN HEAD LEFT (4.1s)']
+        }
+        self.app._update_detection_telemetry(test_telemetry)
+        text_content = self.app.info_text.get("1.0", "end")
+        self.assertIn("Alice", text_content)
+        self.assertIn("Pose: Y:-15 P:+3 R:+0", text_content)
+        self.assertIn("Task: TURN HEAD LEFT (4.1s)", text_content)
+
 if __name__ == '__main__':
     unittest.main()
