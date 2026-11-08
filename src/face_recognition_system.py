@@ -25,15 +25,14 @@ from src.utils import get_ist_filename_timestamp, format_ist_timestamp, load_con
 from src.face_detector import FaceDetector
 from src.face_encoder import FaceEncoder
 from src.anti_spoofing import AntiSpoofEngine, LivenessResult
+from src.security import SecurityManager
 
 def sanitize_identity_name(name: str) -> str:
     """
     Sanitize a human identity name to prevent path traversal and filesystem errors.
-    Removes dangerous characters like '..', '/', '\\', and control characters.
+    Delegates to SecurityManager for centralized cryptographic security policy (SEC-02).
     """
-    clean = re.sub(r'[^a-zA-Z0-9_\- ]', '', name.strip())
-    clean = re.sub(r'\s+', ' ', clean)
-    return clean
+    return SecurityManager.sanitize_identity_name(name)
 
 class FaceRecognitionSystem:
     """
@@ -67,6 +66,7 @@ class FaceRecognitionSystem:
         self.detector = FaceDetector(detection_method=self.model_type)
         self.encoder = FaceEncoder(encoding_model=self.encoding_model)
         self.anti_spoof = AntiSpoofEngine(self.config)
+        self.sec = SecurityManager()
 
         # Internal state collections
         self.known_face_encodings: List[np.ndarray] = []
@@ -137,45 +137,75 @@ class FaceRecognitionSystem:
         print(f"\n[INFO] Total enrolled identities: {len(self.known_face_names)}")
         return len(self.known_face_names) > 0
 
-    def save_encodings(self, filename: str = "data/face_encodings.pkl"):
+    def save_encodings(self, filename: Optional[str] = None):
         """
-        Serialize enrolled identities and embeddings to disk for faster subsequent loads.
+        Serialize enrolled identities and embeddings using AES-authenticated
+        encrypted storage without pickle vulnerabilities (SEC-01).
 
         Args:
-            filename (str): Destination cache file path.
+            filename (str, optional): Destination cache file path.
         """
-        Path(filename).parent.mkdir(parents=True, exist_ok=True)
-        data = {
-            "names": self.known_face_names,
-            "encodings": self.known_face_encodings
-        }
-        with open(filename, 'wb') as f:
-            pickle.dump(data, f)
-        print(f"[INFO] Face encodings saved to: {filename}")
+        enc_file = filename or self.config.get('storage', {}).get('encodings_file', 'data/face_encodings.dat')
+        # Migrate .pkl extension to safe .dat
+        if enc_file.endswith('.pkl'):
+            enc_file = enc_file[:-4] + '.dat'
 
-    def load_encodings(self, filename: str = "data/face_encodings.pkl") -> bool:
+        success = self.sec.save_encrypted_encodings(
+            enc_file, self.known_face_names, self.known_face_encodings
+        )
+        if success:
+            print(f"[INFO] Face encodings safely encrypted and saved to: {enc_file}")
+        else:
+            print(f"[ERROR] Failed to save encrypted face encodings to: {enc_file}")
+
+    def load_encodings(self, filename: Optional[str] = None) -> bool:
         """
-        Load pre-computed face embeddings from cache.
+        Load pre-computed face embeddings from encrypted vector storage.
+        Provides safe, automatic migration if legacy .pkl file is detected.
 
         Args:
-            filename (str): Path to stored encodings file.
+            filename (str, optional): Path to stored encodings file.
 
         Returns:
             bool: True if loaded successfully; False otherwise.
         """
-        if os.path.exists(filename):
+        enc_file = filename or self.config.get('storage', {}).get('encodings_file', 'data/face_encodings.dat')
+        dat_file = enc_file[:-4] + '.dat' if enc_file.endswith('.pkl') else enc_file
+
+        # 1. Primary path: Load from secure encrypted archive (.dat)
+        if os.path.exists(dat_file):
+            names, encodings = self.sec.load_encrypted_encodings(dat_file)
+            if names and encodings:
+                self.known_face_names = names
+                self.known_face_encodings = encodings
+                self.encoder.known_names = list(self.known_face_names)
+                self.encoder.known_encodings = list(self.known_face_encodings)
+                print(f"[INFO] Loaded {len(self.known_face_names)} identities from encrypted archive: {dat_file}")
+                return True
+
+        # 2. Migration fallback: If legacy .pkl exists, load once and auto-migrate to .dat
+        legacy_pkl = "data/face_encodings.pkl"
+        if os.path.exists(legacy_pkl):
             try:
-                with open(filename, 'rb') as f:
+                import pickle
+                with open(legacy_pkl, 'rb') as f:
                     data = pickle.load(f)
                 self.known_face_names = data.get("names", [])
                 self.known_face_encodings = data.get("encodings", [])
                 self.encoder.known_names = list(self.known_face_names)
                 self.encoder.known_encodings = list(self.known_face_encodings)
-                print(f"[INFO] Loaded {len(self.known_face_names)} cached encodings from {filename}")
+                print(f"[SECURITY MIGRATION] Migrating {len(self.known_face_names)} identities from legacy pickle to encrypted storage...")
+                self.save_encodings(dat_file)
+                # Safely archive legacy .pkl
+                try:
+                    os.rename(legacy_pkl, legacy_pkl + ".migrated.bak")
+                except Exception:
+                    pass
                 return True
             except Exception as err:
-                print(f"[WARNING] Could not load cached encodings: {err}")
+                print(f"[WARNING] Could not migrate legacy encodings: {err}")
                 return False
+
         return False
 
     def recognize_face(self, face_encoding: np.ndarray, tolerance: Optional[float] = None) -> Tuple[str, float]:

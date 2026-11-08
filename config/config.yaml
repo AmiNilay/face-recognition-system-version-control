@@ -19,7 +19,7 @@ face_recognition:
 storage:
   known_faces_dir: "known_faces"
   captured_images_dir: "captured_images"
-  encodings_file: "data/face_encodings.pkl"
+  encodings_file: "data/face_encodings.dat"
   database_file: "data/database.db"
   history_file: "data/recognition_history.csv"
 

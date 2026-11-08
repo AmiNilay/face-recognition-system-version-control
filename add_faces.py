@@ -15,11 +15,11 @@ import cv2
 import numpy as np
 from PIL import Image
 from src.utils import get_ist_filename_timestamp, format_ist_timestamp
+from src.security import SecurityManager
 
 def sanitize_name(name: str) -> str:
-    """Sanitize input name to avoid directory traversal or invalid characters."""
-    clean = re.sub(r'[^a-zA-Z0-9_\- ]', '', name.strip())
-    return re.sub(r'\s+', ' ', clean)
+    """Sanitize input name using SecurityManager to avoid directory traversal (SEC-02)."""
+    return SecurityManager.sanitize_identity_name(name)
 
 def capture_face(name: str):
     """
@@ -29,9 +29,8 @@ def capture_face(name: str):
     Args:
         name (str): Person's full name.
     """
-    os.makedirs("known_faces", exist_ok=True)
-    clean_name = sanitize_name(name)
-    safe_filename = clean_name.replace(" ", "_")
+    target_path = SecurityManager.get_safe_portrait_path("known_faces", name)
+    clean_name = SecurityManager.sanitize_identity_name(name)
 
     cap = cv2.VideoCapture(0)
     if not cap.isOpened():
@@ -66,14 +65,13 @@ def capture_face(name: str):
         key = cv2.waitKey(1) & 0xFF
 
         if key == 32:  # SPACE bar pressed
-            target_path = f"known_faces/{safe_filename}.jpg"
             rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
             # Crop or save full image using PIL
             pil_img = Image.fromarray(rgb_frame)
-            pil_img.save(target_path, 'JPEG', quality=95)
+            pil_img.save(str(target_path), 'JPEG', quality=95)
 
-            print(f"[OK] Face image saved successfully: {target_path}")
+            print(f"[OK] Face image saved safely: {target_path}")
 
             # Visual confirmation on screen
             cv2.putText(frame, "SAVED!", (10, 100), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 3)
@@ -107,10 +105,9 @@ def main():
             clean_name = sanitize_name(raw_name)
 
             if clean_name:
-                safe_filename = clean_name.replace(" ", "_")
-                existing_path = f"known_faces/{safe_filename}.jpg"
+                existing_path = SecurityManager.get_safe_portrait_path("known_faces", clean_name)
 
-                if os.path.exists(existing_path):
+                if existing_path.exists():
                     overwrite = input(f"[WARNING] '{clean_name}' is already enrolled. Overwrite? (y/n): ")
                     if overwrite.lower() != 'y':
                         continue

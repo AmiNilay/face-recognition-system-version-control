@@ -13,8 +13,9 @@ import sqlite3
 import csv
 from datetime import datetime
 from pathlib import Path
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Optional, Any, Tuple
 from src.utils import get_ist_now, format_ist_timestamp
+from src.security import SecurityManager, GENESIS_HASH
 
 class RecordRow(dict):
     """
@@ -64,7 +65,7 @@ class DatabaseManager:
 
     def __init__(self, db_path: str = "data/database.db"):
         """
-        Initialize the database manager.
+        Initialize the database manager with cryptographic security services.
 
         Args:
             db_path (str): Relative or absolute path to the SQLite database file.
@@ -72,6 +73,7 @@ class DatabaseManager:
         self.db_path = Path(db_path)
         # Ensure the parent directory (e.g. 'data/') exists
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        self.sec = SecurityManager()
         self.init_database()
 
     def _get_connection(self) -> sqlite3.Connection:
@@ -82,7 +84,7 @@ class DatabaseManager:
         """
         Create necessary database tables if they do not already exist:
         - persons: Stores registered identity records.
-        - recognition_logs: Records every verified face recognition event.
+        - recognition_logs: Records every verified face recognition event with SHA-256 chained hashes.
         - unknown_faces: Records sightings of unregistered individuals.
         """
         with self._get_connection() as conn:
@@ -99,7 +101,7 @@ class DatabaseManager:
                 )
             ''')
 
-            # Table 2: Recognition event history
+            # Table 2: Recognition event history with cryptographic hash chain (SEC-05)
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS recognition_logs (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -107,9 +109,19 @@ class DatabaseManager:
                     timestamp TEXT NOT NULL,
                     confidence REAL NOT NULL,
                     image_path TEXT,
+                    prev_hash TEXT,
+                    current_hash TEXT,
                     FOREIGN KEY (person_id) REFERENCES persons (id) ON DELETE CASCADE
                 )
             ''')
+
+            # Schema Migration: Add prev_hash and current_hash if table existed from earlier versions
+            cursor.execute("PRAGMA table_info(recognition_logs)")
+            existing_cols = [col[1] for col in cursor.fetchall()]
+            if 'prev_hash' not in existing_cols:
+                cursor.execute("ALTER TABLE recognition_logs ADD COLUMN prev_hash TEXT")
+            if 'current_hash' not in existing_cols:
+                cursor.execute("ALTER TABLE recognition_logs ADD COLUMN current_hash TEXT")
 
             # Table 3: Unidentified face detections
             cursor.execute('''
@@ -154,7 +166,8 @@ class DatabaseManager:
     def log_recognition(self, person_name: str, confidence: float, 
                         image_path: Optional[str] = None):
         """
-        Log a successful face recognition sighting with IST timestamp.
+        Log a successful face recognition sighting with IST timestamp and
+        SHA-256 chained cryptographic integrity hashing (SEC-05).
 
         Args:
             person_name (str): Name of the identified person.
@@ -169,11 +182,63 @@ class DatabaseManager:
 
             if result:
                 person_id = result[0]
+
+                # Fetch hash of previous log entry to extend the cryptographic audit chain
+                cursor.execute('SELECT current_hash FROM recognition_logs ORDER BY id DESC LIMIT 1')
+                last_row = cursor.fetchone()
+                prev_hash = last_row[0] if (last_row and last_row[0]) else GENESIS_HASH
+
+                # Compute immutable SHA-256 block hash for this event
+                conf_pct = float(confidence) * 100.0 if float(confidence) <= 1.0 else float(confidence)
+                current_hash = self.sec.compute_record_hash(
+                    prev_hash=prev_hash,
+                    timestamp_ist=current_time_ist,
+                    person_name=person_name,
+                    confidence=conf_pct
+                )
+
                 cursor.execute('''
-                    INSERT INTO recognition_logs (person_id, timestamp, confidence, image_path)
-                    VALUES (?, ?, ?, ?)
-                ''', (person_id, current_time_ist, confidence, image_path))
+                    INSERT INTO recognition_logs (person_id, timestamp, confidence, image_path, prev_hash, current_hash)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                ''', (person_id, current_time_ist, confidence, image_path, prev_hash, current_hash))
                 conn.commit()
+
+    def verify_audit_log_integrity(self) -> Tuple[bool, Optional[int]]:
+        """
+        Cryptographically verify the SHA-256 hash chain across all recorded attendance logs.
+
+        Returns:
+            tuple[bool, Optional[int]]: (True, None) if completely pristine and untampered.
+                                        (False, corrupted_log_id) if tampering is detected.
+        """
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT r.id, p.name, r.timestamp, r.confidence, r.prev_hash, r.current_hash
+                FROM recognition_logs r
+                JOIN persons p ON r.person_id = p.id
+                ORDER BY r.id ASC
+            ''')
+            rows = cursor.fetchall()
+
+            records = []
+            id_map = []
+            for row in rows:
+                id_map.append(row[0])
+                conf = float(row[3])
+                conf_pct = conf * 100.0 if conf <= 1.0 else conf
+                records.append({
+                    'name': row[1],
+                    'timestamp': row[2],
+                    'confidence': conf_pct,
+                    'prev_hash': row[4] or GENESIS_HASH,
+                    'current_hash': row[5] or ''
+                })
+
+            is_valid, corrupted_idx = self.sec.verify_chain_integrity(records)
+            if not is_valid and corrupted_idx is not None:
+                return False, id_map[corrupted_idx]
+            return True, None
 
     def log_unknown_face(self, image_path: str, encoding_path: Optional[str] = None):
         """
