@@ -353,6 +353,21 @@ class FaceRecognitionGUI:
             variable=self.auto_save_var,
             command=self.toggle_auto_save
         )
+        anti_spoof_enabled = bool(getattr(getattr(self.system, 'anti_spoof', None), 'enabled', True))
+        self.anti_spoof_var = tk.BooleanVar(value=anti_spoof_enabled)
+        settings_menu.add_checkbutton(
+            label="Anti-Spoofing (Liveness Verification)",
+            variable=self.anti_spoof_var,
+            command=self.toggle_anti_spoofing
+        )
+        privacy_blur_enabled = bool(getattr(getattr(self.system, 'anti_spoof', None), 'privacy_blur_enabled', False))
+        self.privacy_blur_var = tk.BooleanVar(value=privacy_blur_enabled)
+        settings_menu.add_checkbutton(
+            label="Privacy Mode (Blur Unknown Bystanders)",
+            variable=self.privacy_blur_var,
+            command=self.toggle_privacy_blur
+        )
+        settings_menu.add_separator()
         settings_menu.add_command(label="Set Recognition Cooldown...", command=self.set_cooldown)
 
         # Help Menu
@@ -515,18 +530,37 @@ class FaceRecognitionGUI:
                             locations,
                             num_jitters=1
                         )
+                        # Extract 68 facial landmarks for Eye Aspect Ratio & blink verification
+                        landmarks_list = face_recognition.face_landmarks(rgb_small_frame, locations)
+
                         self.system.face_encodings = encodings
                         self.system.face_names = []
                         self.system.face_confidences = []
+                        self.system.face_liveness = []
 
-                        for enc in encodings:
+                        h_f, w_f = frame.shape[:2]
+
+                        for i, enc in enumerate(encodings):
                             name, conf = self.system.recognize_face(enc)
                             self.system.face_names.append(name)
                             self.system.face_confidences.append(conf)
-                            self.logger.debug(f"Identified subject '{name}' with {conf:.1f}% confidence")
 
-                            # Log recognized face if cooldown has elapsed
-                            if name != "Unknown" and conf >= 50.0:
+                            # Crop face region from full frame for screen moire texture analysis
+                            top_s, right_s, bottom_s, left_s = locations[i]
+                            y1, y2 = max(0, top_s * 4), min(h_f, bottom_s * 4)
+                            x1, x2 = max(0, left_s * 4), min(w_f, right_s * 4)
+                            face_crop = frame[y1:y2, x1:x2] if (y2 > y1 and x2 > x1) else None
+
+                            lms = landmarks_list[i] if i < len(landmarks_list) else None
+                            liveness_res = self.system.anti_spoof.verify_liveness(name, face_crop, lms)
+                            self.system.face_liveness.append(liveness_res)
+
+                            self.logger.debug(
+                                f"Subject '{name}': {conf:.1f}% match | Liveness: {liveness_res.status_text}"
+                            )
+
+                            # Anti-Spoofing Security Gate: Only log attendance when confirmed LIVE
+                            if name != "Unknown" and conf >= 50.0 and liveness_res.is_live:
                                 self.add_recognition_to_history(name, conf)
                                 try:
                                     self.db_manager.log_recognition(name, conf / 100.0)
@@ -536,6 +570,7 @@ class FaceRecognitionGUI:
                         self.system.face_encodings = []
                         self.system.face_names = []
                         self.system.face_confidences = []
+                        self.system.face_liveness = []
 
                 # Render overlays onto display frame copy
                 display_frame = frame.copy()
@@ -551,7 +586,8 @@ class FaceRecognitionGUI:
                     self.latest_telemetry = {
                         'names': list(self.system.face_names),
                         'locations': list(self.system.face_locations),
-                        'confidences': list(self.system.face_confidences)
+                        'confidences': list(self.system.face_confidences),
+                        'liveness': [r.status_text for r in self.system.face_liveness]
                     }
 
                 # Yield CPU briefly to prevent thread starvation
@@ -613,6 +649,7 @@ class FaceRecognitionGUI:
             names = telemetry.get('names', [])
             locations = telemetry.get('locations', [])
             confidences = telemetry.get('confidences', [])
+            liveness_list = telemetry.get('liveness', [])
 
             count = len(locations)
             if count == 0:
@@ -622,6 +659,8 @@ class FaceRecognitionGUI:
 
                 for i, name in enumerate(names):
                     conf = confidences[i] if i < len(confidences) else 0.0
+                    live_str = liveness_list[i] if i < len(liveness_list) else ""
+
                     if name != "Unknown":
                         if conf >= 70.0:
                             level = "[HIGH]  "
@@ -632,6 +671,9 @@ class FaceRecognitionGUI:
                         info_lines.append(f"{level} {name} ({conf:.1f}%)")
                     else:
                         info_lines.append("[UNKNOWN] Unregistered Subject")
+
+                    if live_str:
+                        info_lines.append(f"  {live_str}")
 
                 # Show average confidence score
                 valid_confs = [c for c in confidences if c > 0.0]
@@ -645,6 +687,20 @@ class FaceRecognitionGUI:
             self.info_text.config(state="disabled")
         except Exception:
             pass
+
+    def toggle_anti_spoofing(self):
+        """Toggle biometric anti-spoofing liveness verification."""
+        self.system.anti_spoof.enabled = self.anti_spoof_var.get()
+        state = "Enabled" if self.system.anti_spoof.enabled else "Disabled"
+        self.update_status(f"Anti-Spoofing: {state}")
+        self.logger.info(f"Anti-Spoofing liveness toggled: {state}")
+
+    def toggle_privacy_blur(self):
+        """Toggle automated bystander face blurring."""
+        self.system.anti_spoof.privacy_blur_enabled = self.privacy_blur_var.get()
+        state = "Enabled" if self.system.anti_spoof.privacy_blur_enabled else "Disabled"
+        self.update_status(f"Privacy Mode (Bystander Blur): {state}")
+        self.logger.info(f"Privacy Mode toggled: {state}")
 
     def update_detection_info(self):
         """Backward compatibility wrapper for updating detection telemetry."""

@@ -24,6 +24,7 @@ from typing import Tuple, List, Optional, Dict, Any
 from src.utils import get_ist_filename_timestamp, format_ist_timestamp, load_config
 from src.face_detector import FaceDetector
 from src.face_encoder import FaceEncoder
+from src.anti_spoofing import AntiSpoofEngine, LivenessResult
 
 def sanitize_identity_name(name: str) -> str:
     """
@@ -65,6 +66,7 @@ class FaceRecognitionSystem:
         # Modular engines
         self.detector = FaceDetector(detection_method=self.model_type)
         self.encoder = FaceEncoder(encoding_model=self.encoding_model)
+        self.anti_spoof = AntiSpoofEngine(self.config)
 
         # Internal state collections
         self.known_face_encodings: List[np.ndarray] = []
@@ -73,6 +75,7 @@ class FaceRecognitionSystem:
         self.face_encodings: List[np.ndarray] = []
         self.face_names: List[str] = []
         self.face_confidences: List[float] = []
+        self.face_liveness: List[LivenessResult] = []
 
     def load_known_faces(self, images_folder: str = "known_faces") -> bool:
         """
@@ -291,7 +294,7 @@ class FaceRecognitionSystem:
 
     def draw_results(self, frame: np.ndarray):
         """
-        Render color-coded bounding boxes and confidence readouts onto a frame.
+        Render color-coded bounding boxes, confidence readouts, and liveness HUD onto a frame.
 
         Color Code:
         - Green (High confidence: >= 70%)
@@ -299,13 +302,17 @@ class FaceRecognitionSystem:
         - Yellow (Low confidence: < 50%)
         - Red (Unknown / Unregistered)
         """
-        for i, ((top, right, bottom, left), name) in enumerate(zip(self.face_locations, self.face_names)):
-            # Upscale coordinates by 4 to map back from 0.25 downscaled frame
-            top *= 4
-            right *= 4
-            bottom *= 4
-            left *= 4
+        # Upscale coordinates by 4 to map back from 0.25 downscaled frame
+        scaled_locations = [
+            (top * 4, right * 4, bottom * 4, left * 4) 
+            for (top, right, bottom, left) in self.face_locations
+        ]
 
+        # Apply automated bystander face blur (Privacy Mode) if enabled
+        if self.anti_spoof.privacy_blur_enabled:
+            self.anti_spoof.apply_privacy_blur(frame, scaled_locations, self.face_names)
+
+        for i, ((top, right, bottom, left), name) in enumerate(zip(scaled_locations, self.face_names)):
             confidence = self.face_confidences[i] if i < len(self.face_confidences) else 0.0
 
             if name == "Unknown":
@@ -329,6 +336,19 @@ class FaceRecognitionSystem:
                 conf_text = f"{confidence:.1f}%"
                 cv2.putText(frame, conf_text, (left + 6, bottom - 10), font, 0.5, (255, 255, 255), 1)
 
+            # Render liveness indicator banner above top bounding box
+            liveness = self.face_liveness[i] if i < len(self.face_liveness) else None
+            if liveness:
+                cv2.putText(
+                    frame,
+                    liveness.status_text,
+                    (left, max(top - 10, 20)),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.5,
+                    liveness.hud_color,
+                    1
+                )
+
         # Draw HUD text telemetry in top-left corner
         cv2.putText(frame, f"Faces: {len(self.face_locations)}", 
                     (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
@@ -341,6 +361,13 @@ class FaceRecognitionSystem:
             avg_conf = sum(valid_confs) / float(len(valid_confs))
             cv2.putText(frame, f"Avg Confidence: {avg_conf:.1f}%", 
                         (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+
+        if self.anti_spoof.enabled:
+            hud_mode = "[ACTIVE]"
+            if self.anti_spoof.privacy_blur_enabled:
+                hud_mode += " [PRIVACY: ON]"
+            cv2.putText(frame, f"Anti-Spoof: {hud_mode}", 
+                        (10, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
 
     def save_frame(self, frame: np.ndarray):
         """Save a snapshot of the current frame with an IST timestamp."""

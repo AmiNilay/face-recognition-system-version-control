@@ -29,3 +29,10 @@ ui:
   show_confidence: true
   theme: "dark"
   cooldown_seconds: 5     # Seconds between logging duplicate recognition for the same person
+
+anti_spoofing:
+  enabled: true                 # Master toggle for biometric liveness verification
+  ear_threshold: 0.22           # Eye Aspect Ratio threshold (below this is considered closed eye)
+  consecutive_closed_frames: 2  # Minimum consecutive frames below threshold to count as blink
+  texture_analysis: true        # Screen moire / digital screen replay detection
+  privacy_blur_bystanders: false # Automatic Gaussian blur on unknown / bystander faces
