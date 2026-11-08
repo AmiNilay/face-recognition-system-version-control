@@ -39,3 +39,8 @@ anti_spoofing:
   head_pose: true               # 3D Head pose estimation (solvePnP Euler angles & nose ray)
   challenge_response: false     # Interactive challenge-response mode (turn left/right, nod down)
   challenge_timeout: 5.0        # Timeout in seconds to complete dynamic liveness challenges
+
+audio:
+  enabled: false                # Offline text-to-speech voice announcements upon face recognition
+  cooldown_seconds: 15.0        # Seconds before greeting the same person again
+  rate: 170                     # Speech rate (words per minute)

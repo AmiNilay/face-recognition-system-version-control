@@ -13,6 +13,8 @@ src/
 ├── face_encoder.py            # 128-dimensional biometric embedding engine
 ├── vector_index.py            # O(log N) spatial nearest-neighbor search (cKDTree)
 ├── anti_spoofing.py           # Liveness verification, 3D head pose & challenge-response
+├── audio_announcer.py         # Asynchronous offline text-to-speech voice synthesizer
+├── reporting.py               # Attendance analytics & Apple-style HTML/CSV reporting
 ├── security.py                # Cryptographic storage & path traversal guards
 ├── database_manager.py        # SQLite persistence layer with chained SHA-256 audit log
 └── utils.py                   # Shared utilities (logging, configs, FPS, IST time)
@@ -138,3 +140,28 @@ SQLite relational storage manager.
 * `log_recognition(person_name: str, confidence: float, image_path: str = None) -> None`
 * `get_recognition_history(person_name: str = None, limit: int = 100) -> pd.DataFrame`
 * `export_to_csv(output_path: str = "data/recognition_log.csv") -> str`
+
+---
+
+## 8. `AudioAnnouncer` (`src/audio_announcer.py`)
+
+Asynchronous offline speech synthesizer engine for multimodal voice greetings upon verification.
+
+### Methods
+
+* `announce_recognition(name: str, current_time=None) -> bool`: Queues an audio greeting (`"Welcome, {name}"`) if cooldown window has elapsed.
+* `announce_custom(message: str) -> bool`: Queues an arbitrary high-priority voice message.
+* `set_enabled(enabled: bool) -> None`: Dynamically enables or disables voice announcements.
+* `stop() -> None`: Gracefully terminates background audio worker thread.
+
+---
+
+## 9. `AttendanceReporter` (`src/reporting.py`)
+
+Multi-format attendance analytics and executive reporting engine.
+
+### Methods
+
+* `generate_daily_summary(target_date=None) -> Dict[str, Any]`: Computes aggregate attendance statistics (total enrolled, present, absent, rate, first seen, last seen, mean confidence).
+* `export_csv(summary, output_path="data/attendance_summary.csv") -> str`: Exports attendance breakdown to a structured CSV file.
+* `export_html(summary, output_path="data/attendance_report.html") -> str`: Generates presentation-grade, Apple-styled executive HTML report with responsive cards and printable CSS.

@@ -134,3 +134,26 @@ The system features multi-layered anti-spoofing defense against presentation att
 4. **Interactive Challenge-Response Mode:** Issues dynamic motion challenges (e.g. `TURN HEAD LEFT`, `TURN HEAD RIGHT`, `NOD HEAD DOWN`) within a countdown window to defeat deepfake video replay loops.
 5. **GDPR Privacy Mode:** Automatically applies 51x51 Gaussian blur to unverified bystanders walking behind enrolled subjects.
 
+---
+
+## 8. Offline Voice Announcements & Audio Feedback
+
+The system includes offline text-to-speech audio feedback (`src/audio_announcer.py`):
+* **Greeting on Detection:** Automatically greets recognized personnel (e.g. *"Welcome, Nilay Naha"*).
+* **Cooldown Deduplication:** Configurable speech cooldown (default: 15s) prevents repetitive audio loops.
+* **Non-Blocking Architecture:** Speech is synthesized in a dedicated background worker thread, ensuring the camera stream maintains full 30 FPS.
+* **Toggle:** Can be enabled or disabled via **Settings ➔ Voice Announcements (Text-to-Speech)** in the GUI menu or in `config.yaml`.
+
+---
+
+## 9. Executive Attendance Reporting (Apple Design HTML & CSV)
+
+Generate presentation-grade attendance analytics directly from the GUI or CLI:
+* **HTML Executive Report:**
+  * Navigate to **File ➔ Generate Executive Attendance Report (HTML)** in the GUI.
+  * Creates an Apple-styled dashboard (`data/attendance_report.html`) complete with statistical cards (Present Count, Attendance Rate %, Mean Confidence, Total Sightings), clean attendee table with first/last seen times in IST, and absent personnel highlights.
+  * Fully print-ready (`@media print` supported).
+* **CSV Export:**
+  * Navigate to **File ➔ Export Recognition History (CSV)** to export raw or summarized attendance spreadsheets.
+
+

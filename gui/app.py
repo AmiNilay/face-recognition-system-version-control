@@ -31,6 +31,8 @@ sys.path.append(str(Path(__file__).parent.parent))
 
 from src.face_recognition_system import FaceRecognitionSystem
 from src.database_manager import DatabaseManager
+from src.audio_announcer import AudioAnnouncer
+from src.reporting import AttendanceReporter
 from src.utils import (
     load_config, 
     setup_logging, 
@@ -51,7 +53,7 @@ class FaceRecognitionGUI:
         self.root.title("Face Recognition System - Professional Edition")
         self.root.geometry("1200x720")
         self.root.minsize(1000, 650)
-        self.root.configure(bg="#2b2b2b")
+        self.root.configure(bg="#161618")
 
         # Initialize logging with IST timestamps
         setup_logging()
@@ -61,6 +63,8 @@ class FaceRecognitionGUI:
         self.system = FaceRecognitionSystem()
         self.db_manager = DatabaseManager()
         self.config = load_config()
+        self.announcer = AudioAnnouncer(self.config)
+        self.reporter = AttendanceReporter(self.db_manager)
 
         # Camera streaming state & thread-safe synchronization
         self.is_running: bool = False
@@ -98,131 +102,154 @@ class FaceRecognitionGUI:
     # 1. GUI LAYOUT SETUP
     # --------------------------------------------------------------------------
     def setup_gui(self):
-        """Construct the visual window layout and control panels."""
+        """Construct the visual window layout and control panels using Apple design foundations."""
         self.create_menu()
 
         # Header Title Bar
-        title_frame = tk.Frame(self.root, bg="#1e1e1e", height=60)
-        title_frame.pack(fill="x", padx=10, pady=(10, 5))
+        title_frame = tk.Frame(self.root, bg="#1c1c1e", height=65)
+        title_frame.pack(fill="x", padx=12, pady=(12, 6))
         title_frame.pack_propagate(False)
 
-        title_label = tk.Label(
-            title_frame,
-            text="FACE RECOGNITION SYSTEM",
-            font=("Arial", 20, "bold"),
-            bg="#1e1e1e",
-            fg="#00ff00"
-        )
-        title_label.pack(side="left", padx=20, pady=10)
+        title_container = tk.Frame(title_frame, bg="#1c1c1e")
+        title_container.pack(side="left", padx=16, pady=10)
 
-        # IST Live Clock Subtitle
+        title_label = tk.Label(
+            title_container,
+            text="Face Recognition System",
+            font=("Segoe UI", 16, "bold"),
+            bg="#1c1c1e",
+            fg="#f5f5f7"
+        )
+        title_label.pack(anchor="w")
+
+        subtitle_label = tk.Label(
+            title_container,
+            text="Biometric Authentication, Anti-Spoofing & Live Attendance",
+            font=("Segoe UI", 9),
+            bg="#1c1c1e",
+            fg="#98989d"
+        )
+        subtitle_label.pack(anchor="w")
+
+        # IST Live Clock Subtitle Badge
         self.clock_label = tk.Label(
             title_frame,
             text=f"IST: {format_ist_timestamp()}",
-            font=("Arial", 11),
-            bg="#1e1e1e",
-            fg="#aaaaaa"
+            font=("Consolas", 10),
+            bg="#28282b",
+            fg="#a1a1a6",
+            padx=12,
+            pady=6
         )
-        self.clock_label.pack(side="right", padx=20, pady=10)
+        self.clock_label.pack(side="right", padx=16, pady=14)
         self._update_clock()
 
         # Main Body Container
-        main_container = tk.Frame(self.root, bg="#2b2b2b")
-        main_container.pack(fill="both", expand=True, padx=10, pady=5)
+        main_container = tk.Frame(self.root, bg="#161618")
+        main_container.pack(fill="both", expand=True, padx=12, pady=6)
 
         # Left Panel: Video Feed & Controls
-        left_panel = tk.Frame(main_container, bg="#1e1e1e")
-        left_panel.pack(side="left", fill="both", expand=True, padx=(0, 5))
+        left_panel = tk.Frame(main_container, bg="#1c1c1e", highlightthickness=1, highlightbackground="#2c2c2e")
+        left_panel.pack(side="left", fill="both", expand=True, padx=(0, 6))
 
         # Video Canvas
-        video_frame = tk.Frame(left_panel, bg="#000000", relief="sunken", bd=2)
-        video_frame.pack(padx=10, pady=10, fill="both", expand=True)
+        video_frame = tk.Frame(left_panel, bg="#0d0d0e")
+        video_frame.pack(padx=12, pady=12, fill="both", expand=True)
 
         self.video_label = tk.Label(
             video_frame,
-            bg="#000000",
+            bg="#0d0d0e",
             text="Camera Inactive\nClick 'Start Camera' below",
-            font=("Arial", 14),
-            fg="#666666"
+            font=("Segoe UI", 13),
+            fg="#636366"
         )
         self.video_label.pack(fill="both", expand=True)
 
         # Camera Control Action Buttons
-        controls_frame = tk.Frame(left_panel, bg="#1e1e1e")
-        controls_frame.pack(pady=(0, 10))
+        controls_frame = tk.Frame(left_panel, bg="#1c1c1e")
+        controls_frame.pack(pady=(0, 14))
 
         self.start_btn = tk.Button(
             controls_frame,
             text="Start Camera",
             command=self.start_camera,
-            bg="#00aa00",
-            fg="white",
-            font=("Arial", 11, "bold"),
+            bg="#30d158",
+            fg="#000000",
+            activebackground="#28b84c",
+            activeforeground="#000000",
+            font=("Segoe UI", 10, "bold"),
             width=14,
             height=2,
             cursor="hand2",
-            relief="raised"
+            relief="flat",
+            bd=0
         )
-        self.start_btn.grid(row=0, column=0, padx=6)
+        self.start_btn.grid(row=0, column=0, padx=8)
 
         self.stop_btn = tk.Button(
             controls_frame,
             text="Stop Camera",
             command=self.stop_camera,
-            bg="#aa0000",
-            fg="white",
-            font=("Arial", 11, "bold"),
+            bg="#ff453a",
+            fg="#ffffff",
+            activebackground="#d63a31",
+            activeforeground="#ffffff",
+            font=("Segoe UI", 10, "bold"),
             width=14,
             height=2,
             state="disabled",
             cursor="hand2",
-            relief="raised"
+            relief="flat",
+            bd=0
         )
-        self.stop_btn.grid(row=0, column=1, padx=6)
+        self.stop_btn.grid(row=0, column=1, padx=8)
 
         self.capture_btn = tk.Button(
             controls_frame,
             text="Capture Face",
             command=self.capture_face,
-            bg="#0066cc",
-            fg="white",
-            font=("Arial", 11, "bold"),
+            bg="#0a84ff",
+            fg="#ffffff",
+            activebackground="#0071e3",
+            activeforeground="#ffffff",
+            font=("Segoe UI", 10, "bold"),
             width=14,
             height=2,
             state="disabled",
             cursor="hand2",
-            relief="raised"
+            relief="flat",
+            bd=0
         )
-        self.capture_btn.grid(row=0, column=2, padx=6)
+        self.capture_btn.grid(row=0, column=2, padx=8)
 
         # Right Panel: Telemetry & Face Management
-        right_panel = tk.Frame(main_container, bg="#1e1e1e", width=380)
-        right_panel.pack(side="right", fill="both", padx=(5, 0))
+        right_panel = tk.Frame(main_container, bg="#1c1c1e", width=380, highlightthickness=1, highlightbackground="#2c2c2e")
+        right_panel.pack(side="right", fill="both", padx=(6, 0))
         right_panel.pack_propagate(False)
 
         # Live Detection Telemetry Box
         info_frame = tk.LabelFrame(
             right_panel,
             text="Detection Telemetry",
-            bg="#1e1e1e",
-            fg="#00ff00",
-            font=("Arial", 11, "bold"),
+            bg="#1c1c1e",
+            fg="#30d158",
+            font=("Segoe UI", 10, "bold"),
             padx=10,
             pady=8
         )
-        info_frame.pack(fill="x", padx=10, pady=(10, 5))
+        info_frame.pack(fill="x", padx=12, pady=(12, 6))
 
         self.info_text = tk.Text(
             info_frame,
             height=8,
-            bg="#2b2b2b",
-            fg="#00ff00",
+            bg="#121214",
+            fg="#30d158",
             font=("Consolas", 10),
             wrap="word",
             state="disabled",
             relief="flat",
-            padx=5,
-            pady=5
+            padx=8,
+            pady=8
         )
         self.info_text.pack(fill="both", expand=True)
 
@@ -230,15 +257,15 @@ class FaceRecognitionGUI:
         faces_frame = tk.LabelFrame(
             right_panel,
             text="Enrolled Identities",
-            bg="#1e1e1e",
-            fg="#00ff00",
-            font=("Arial", 11, "bold"),
+            bg="#1c1c1e",
+            fg="#0a84ff",
+            font=("Segoe UI", 10, "bold"),
             padx=10,
             pady=8
         )
-        faces_frame.pack(fill="both", expand=True, padx=10, pady=5)
+        faces_frame.pack(fill="both", expand=True, padx=12, pady=6)
 
-        list_container = tk.Frame(faces_frame, bg="#1e1e1e")
+        list_container = tk.Frame(faces_frame, bg="#1c1c1e")
         list_container.pack(fill="both", expand=True)
 
         scrollbar = tk.Scrollbar(list_container)
@@ -247,65 +274,78 @@ class FaceRecognitionGUI:
         self.faces_listbox = tk.Listbox(
             list_container,
             yscrollcommand=scrollbar.set,
-            bg="#2b2b2b",
-            fg="white",
-            font=("Arial", 10),
+            bg="#121214",
+            fg="#f5f5f7",
+            font=("Segoe UI", 10),
             selectmode="single",
             relief="flat",
-            highlightthickness=1,
-            highlightbackground="#00aa00"
+            highlightthickness=0,
+            selectbackground="#0a84ff",
+            selectforeground="#ffffff"
         )
         self.faces_listbox.pack(fill="both", expand=True, side="left")
         scrollbar.config(command=self.faces_listbox.yview)
 
         # Face Management Buttons
-        btn_frame = tk.Frame(faces_frame, bg="#1e1e1e")
-        btn_frame.pack(pady=8)
+        btn_frame = tk.Frame(faces_frame, bg="#1c1c1e")
+        btn_frame.pack(pady=10)
 
         tk.Button(
             btn_frame,
             text="Add Face",
             command=self.add_face_dialog,
-            bg="#00aa00",
-            fg="white",
-            font=("Arial", 9, "bold"),
+            bg="#30d158",
+            fg="#000000",
+            activebackground="#28b84c",
+            activeforeground="#000000",
+            font=("Segoe UI", 9, "bold"),
             width=10,
-            cursor="hand2"
-        ).grid(row=0, column=0, padx=3)
+            cursor="hand2",
+            relief="flat",
+            bd=0
+        ).grid(row=0, column=0, padx=4)
 
         tk.Button(
             btn_frame,
             text="Remove Face",
             command=self.remove_face,
-            bg="#aa0000",
-            fg="white",
-            font=("Arial", 9, "bold"),
+            bg="#2c2c2e",
+            fg="#ff453a",
+            activebackground="#3a3a3c",
+            activeforeground="#ff453a",
+            font=("Segoe UI", 9, "bold"),
             width=11,
-            cursor="hand2"
-        ).grid(row=0, column=1, padx=3)
+            cursor="hand2",
+            relief="flat",
+            bd=0
+        ).grid(row=0, column=1, padx=4)
 
         tk.Button(
             btn_frame,
             text="Refresh",
             command=self.refresh_faces,
-            bg="#0066cc",
-            fg="white",
-            font=("Arial", 9, "bold"),
+            bg="#2c2c2e",
+            fg="#0a84ff",
+            activebackground="#3a3a3c",
+            activeforeground="#0a84ff",
+            font=("Segoe UI", 9, "bold"),
             width=10,
-            cursor="hand2"
-        ).grid(row=0, column=2, padx=3)
+            cursor="hand2",
+            relief="flat",
+            bd=0
+        ).grid(row=0, column=2, padx=4)
 
         # Bottom Status Bar
         self.status_bar = tk.Label(
             self.root,
             text=" Ready",
-            bg="#1e1e1e",
-            fg="#00ff00",
-            font=("Arial", 9),
+            bg="#1c1c1e",
+            fg="#30d158",
+            font=("Segoe UI", 9),
             anchor="w",
-            relief="sunken",
-            padx=5,
-            pady=2
+            relief="flat",
+            padx=8,
+            pady=4
         )
         self.status_bar.pack(side="bottom", fill="x")
 
@@ -328,6 +368,7 @@ class FaceRecognitionGUI:
         menubar.add_cascade(label="File", menu=file_menu)
         file_menu.add_command(label="Enroll Face from Image File", command=self.add_face_dialog)
         file_menu.add_separator()
+        file_menu.add_command(label="Generate Executive Attendance Report (HTML)", command=self.generate_attendance_report)
         file_menu.add_command(label="Export Recognition History (CSV)", command=self.export_recognition_history)
         file_menu.add_command(label="Export Database Attendance Logs", command=self.export_logs)
         file_menu.add_separator()
@@ -380,6 +421,13 @@ class FaceRecognitionGUI:
             label="Interactive Challenge-Response Mode",
             variable=self.challenge_var,
             command=self.toggle_challenge_response
+        )
+        audio_enabled = bool(getattr(self, 'announcer', None) and self.announcer.enabled)
+        self.audio_var = tk.BooleanVar(value=audio_enabled)
+        settings_menu.add_checkbutton(
+            label="Voice Announcements (Text-to-Speech)",
+            variable=self.audio_var,
+            command=self.toggle_audio
         )
         settings_menu.add_separator()
         settings_menu.add_command(label="Set Recognition Cooldown...", command=self.set_cooldown)
@@ -578,6 +626,8 @@ class FaceRecognitionGUI:
                             # Anti-Spoofing Security Gate: Only log attendance when confirmed LIVE
                             if name != "Unknown" and conf >= 50.0 and liveness_res.is_live:
                                 self.add_recognition_to_history(name, conf)
+                                if hasattr(self, 'announcer') and self.announcer is not None:
+                                    self.announcer.announce_recognition(name)
                                 try:
                                     self.db_manager.log_recognition(name, conf / 100.0)
                                 except Exception as log_err:
@@ -741,6 +791,28 @@ class FaceRecognitionGUI:
         state = "Enabled" if self.system.anti_spoof.challenge_response_enabled else "Disabled"
         self.update_status(f"Challenge-Response: {state}")
         self.logger.info(f"Challenge-Response mode toggled: {state}")
+
+    def toggle_audio(self):
+        """Toggle offline voice announcement synthesizer."""
+        if hasattr(self, 'announcer') and self.announcer is not None:
+            self.announcer.set_enabled(self.audio_var.get())
+            state = "Enabled" if self.announcer.enabled else "Disabled"
+            self.update_status(f"Voice Announcements: {state}")
+            self.logger.info(f"Voice Announcements toggled: {state}")
+
+    def generate_attendance_report(self):
+        """Generate and export presentation-grade Apple-style attendance report in HTML."""
+        try:
+            summary = self.reporter.generate_daily_summary()
+            report_path = self.reporter.export_html(summary, "data/attendance_report.html")
+            messagebox.showinfo(
+                "Report Generated",
+                f"Executive Attendance Report created successfully:\n\n{report_path}\n\n"
+                f"Present: {summary['total_present']} / {summary['total_enrolled']} ({summary['attendance_rate']}%)"
+            )
+            self.update_status(f"Generated report: {report_path}")
+        except Exception as err:
+            messagebox.showerror("Report Error", f"Failed to generate attendance report: {err}")
 
     def update_detection_info(self):
         """Backward compatibility wrapper for updating detection telemetry."""
