@@ -43,6 +43,7 @@ from src.face_recognition_system import FaceRecognitionSystem
 from src.database_manager import DatabaseManager
 from src.reporting import AttendanceReporter
 from src.security import SecurityManager
+from src.composite_enrollment import compute_l2_normalized_composite
 from src.utils import format_ist_timestamp, get_ist_date_string, load_config
 
 
@@ -104,6 +105,18 @@ class EnrollResponse(BaseModel):
     name: str = Field(..., description="Sanitized identity name")
     enrolled_at_ist: str = Field(..., description="Enrollment timestamp in IST")
     total_enrolled: int = Field(..., description="Total registered identities after enrollment")
+
+
+class CompositeAngleInput(BaseModel):
+    """Single facial angle snapshot for composite enrollment."""
+    angle: str = Field(..., description="Angle label: FRONTAL, TURN_LEFT, TURN_RIGHT, TILT_UP, NOD_DOWN")
+    image_base64: str = Field(..., description="Base64-encoded image captured at this angle")
+
+
+class CompositeEnrollRequest(BaseModel):
+    """Payload for multi-angle Face ID composite enrollment."""
+    name: str = Field(..., min_length=2, max_length=50, description="Full name of the person")
+    angles: List[CompositeAngleInput] = Field(..., min_length=2, description="List of multi-angle images (min 2, rec 5)")
 
 
 class HealthResponse(BaseModel):
@@ -484,6 +497,77 @@ def create_app(system: Optional[FaceRecognitionSystem] = None,
         raw_bytes = await file.read()
         bgr_image = decode_image_bytes(raw_bytes)
         return _execute_enrollment(name, bgr_image)
+
+    @app.post("/api/v1/enroll/composite", response_model=EnrollResponse, tags=["Biometrics"],
+              summary="Enroll Identity via Apple Face ID Multi-Angle Composite Embeddings")
+    async def enroll_face_composite(payload: CompositeEnrollRequest):
+        """
+        Enroll an identity using multiple face angles (e.g. Frontal, Left, Right, Up, Down).
+        Extracts 128-d embeddings for each angle and synthesizes an L2-normalized composite vector.
+        """
+        clean_name = SecurityManager.sanitize_identity_name(payload.name)
+        if not clean_name or clean_name == "Unknown":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid identity name. Only alphanumeric characters are allowed. Cannot enroll 'Unknown'."
+            )
+
+        sys_instance: FaceRecognitionSystem = app.state.system
+        db: DatabaseManager = app.state.db_manager
+
+        embeddings: List[np.ndarray] = []
+        portraits: List[np.ndarray] = []
+
+        for item in payload.angles:
+            try:
+                bgr_img = decode_base64_image(item.image_base64)
+                rgb_img = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2RGB)
+                locs = sys_instance.detector.detect_faces(rgb_img)
+                if locs:
+                    encs = sys_instance.encoder.encode_faces(rgb_img, [locs[0]])
+                    if encs:
+                        embeddings.append(encs[0])
+                        portraits.append(bgr_img)
+            except Exception:
+                continue
+
+        if len(embeddings) < 2:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Insufficient valid facial poses ({len(embeddings)}). At least 2 clear facial angles are required."
+            )
+
+        composite_vector = compute_l2_normalized_composite(embeddings)
+        reference_portrait = portraits[0] if portraits else None
+
+        # Enroll composite embedding into system and vector index
+        enrolled_ok = sys_instance.enroll_composite_identity(
+            name=clean_name,
+            composite_embedding=composite_vector,
+            reference_portrait=reference_portrait
+        )
+
+        if not enrolled_ok:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to save composite biometric embedding."
+            )
+
+        safe_filename = clean_name.replace(" ", "_")
+        target_path = f"known_faces/{safe_filename}.jpg"
+        if db is not None:
+            try:
+                db.add_person(clean_name, target_path)
+            except Exception:
+                pass
+
+        return EnrollResponse(
+            success=True,
+            message=f"Identity '{clean_name}' enrolled with {len(embeddings)}-angle composite Face ID embedding.",
+            name=clean_name,
+            enrolled_at_ist=format_ist_timestamp(),
+            total_enrolled=len(sys_instance.known_face_names)
+        )
 
     @app.get("/api/v1/attendance", response_model=AttendanceSummaryResponse, tags=["Attendance"],
              summary="Query Daily Attendance Analytics in IST")

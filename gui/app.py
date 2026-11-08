@@ -222,6 +222,23 @@ class FaceRecognitionGUI:
         )
         self.capture_btn.grid(row=0, column=2, padx=8)
 
+        self.wizard_btn = tk.Button(
+            controls_frame,
+            text="Face ID Wizard",
+            command=self.open_face_id_wizard,
+            bg="#af52de",
+            fg="#ffffff",
+            activebackground="#9b45c7",
+            activeforeground="#ffffff",
+            font=("Segoe UI", 10, "bold"),
+            width=14,
+            height=2,
+            cursor="hand2",
+            relief="flat",
+            bd=0
+        )
+        self.wizard_btn.grid(row=0, column=3, padx=8)
+
         # Right Panel: Telemetry & Face Management
         right_panel = tk.Frame(main_container, bg="#1c1c1e", width=380, highlightthickness=1, highlightbackground="#2c2c2e")
         right_panel.pack(side="right", fill="both", padx=(6, 0))
@@ -366,6 +383,7 @@ class FaceRecognitionGUI:
         # File Menu
         file_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="File", menu=file_menu)
+        file_menu.add_command(label="Face ID Multi-Angle Enrollment Wizard", command=self.open_face_id_wizard)
         file_menu.add_command(label="Enroll Face from Image File", command=self.add_face_dialog)
         file_menu.add_separator()
         file_menu.add_command(label="Generate Executive Attendance Report (HTML)", command=self.generate_attendance_report)
@@ -888,6 +906,54 @@ class FaceRecognitionGUI:
                 self.logger.info(f"Enrolled face: {clean_name}")
             else:
                 messagebox.showerror("Error", "Could not compute biometric encoding.")
+
+    def open_face_id_wizard(self):
+        """Launch the Apple Face ID Multi-Angle Enrollment Wizard modal window."""
+        from src.security import SecurityManager
+        was_running = self.is_running
+        if was_running:
+            self.stop_camera()
+
+        name = simpledialog.askstring(
+            "Apple Face ID Setup",
+            "Enter full name of person to enroll:",
+            parent=self.root
+        )
+        if not name:
+            if was_running:
+                self.start_camera()
+            return
+
+        clean_name = SecurityManager.sanitize_identity_name(name)
+        if not clean_name or clean_name == "Unknown":
+            messagebox.showerror("Invalid Name", "Please provide a valid alphanumeric name.", parent=self.root)
+            if was_running:
+                self.start_camera()
+            return
+
+        # Launch Face ID Wizard modal dialog
+        from gui.face_id_wizard import FaceIDWizardModal
+        FaceIDWizardModal(
+            parent=self.root,
+            system=self.system,
+            db_manager=self.db_manager,
+            announcer=self.announcer,
+            identity_name=clean_name,
+            on_complete=self._on_face_id_wizard_complete
+        )
+
+    def _on_face_id_wizard_complete(self, success: bool, name: str):
+        """Callback triggered when the Face ID modal closes."""
+        if success:
+            self.refresh_faces()
+            self.update_status(f"Face ID enrollment complete for '{name}'")
+            messagebox.showinfo(
+                "Face ID Setup Complete",
+                f"Successfully synthesized multi-angle composite embedding for '{name}'.",
+                parent=self.root
+            )
+        else:
+            self.update_status("Face ID enrollment was cancelled.")
 
     def add_face_dialog(self):
         """Enroll an identity from an image file on disk."""

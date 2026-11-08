@@ -180,5 +180,39 @@ run_api.bat
 * **Live Attendance Queries:** Query `/api/v1/attendance` in IST to receive real-time presence rates and attendee/absentee breakdowns in JSON, CSV, or HTML.
 * **Real-time WebSockets:** Connect to `/ws/stream` to stream high-frequency video frames and receive sub-20ms telemetry responses.
 
+---
+
+## 11. Apple Face ID Multi-Angle Enrollment Wizard
+
+The system supports **multi-angle composite facial enrollment** modeled after Apple Face ID. Instead of enrolling from a single photo, the wizard guides the subject through 5 canonical head orientations to synthesize an $L_2$-normalized composite embedding:
+
+### 5-Step Guided Poses
+1. **Frontal:** Look directly at the sensor (Yaw: $[-7^\circ, +7^\circ]$, Pitch: $[-7^\circ, +7^\circ]$).
+2. **Turn Left:** Slowly rotate head left (Yaw: $\le -12^\circ$).
+3. **Turn Right:** Slowly rotate head right (Yaw: $\ge +12^\circ$).
+4. **Tilt Up:** Slowly look upward (Pitch: $\le -8^\circ$).
+5. **Nod Down:** Slowly look downward (Pitch: $\ge +8^\circ$).
+
+### Three Ways to Run Face ID Enrollment
+
+#### 1. From Desktop GUI
+* Click the purple **Face ID Wizard** button in the camera controls panel, or select **File ➔ Face ID Multi-Angle Enrollment Wizard** from the menu.
+* Enter the employee's name and position your face within the segmented circular guide.
+* The 36 radial tick marks light up Apple Mint Green as each angle is successfully scanned.
+
+#### 2. From Dedicated CLI Launcher
+```bash
+# Launch interactive console wizard
+python add_faces_wizard.py --name "Nilay Naha"
+
+# Or double-click the Windows batch launcher
+run_face_id_wizard.bat
+```
+
+#### 3. Remotely via REST API
+* Submit multiple angle captures to `POST /api/v1/enroll/composite` with image Base64 payloads.
+* The server verifies each perspective, computes the $L_2$-normalized Fréchet centroid embedding, and indexes it into the spatial KD-tree.
+
+
 
 

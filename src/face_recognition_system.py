@@ -542,6 +542,61 @@ class FaceRecognitionSystem:
             print(f"[ERROR] Could not enroll from {image_path}: {err}")
         return False
 
+    def enroll_composite_identity(
+        self,
+        name: str,
+        composite_embedding: np.ndarray,
+        reference_portrait: Optional[np.ndarray] = None
+    ) -> bool:
+        """
+        Enroll an identity using a multi-angle composite embedding (Apple Face ID mode).
+        
+        Args:
+            name (str): Person's full name.
+            composite_embedding (np.ndarray): 128-d L2-normalized composite embedding.
+            reference_portrait (np.ndarray, optional): Reference image in BGR or RGB format.
+            
+        Returns:
+            bool: True if enrolled and saved successfully; False otherwise.
+        """
+        clean_name = sanitize_identity_name(name)
+        if not clean_name or clean_name == "Unknown":
+            return False
+
+        if composite_embedding is None or len(composite_embedding) != 128:
+            return False
+
+        try:
+            safe_name = clean_name.replace(" ", "_")
+            os.makedirs("known_faces", exist_ok=True)
+            filename = f"known_faces/{safe_name}.jpg"
+
+            # Save reference image if supplied
+            if reference_portrait is not None and reference_portrait.size > 0:
+                # Ensure RGB format for Pillow saving
+                if len(reference_portrait.shape) == 3 and reference_portrait.shape[2] == 3:
+                    # Check if BGR; assume OpenCV BGR input
+                    rgb_frame = cv2.cvtColor(reference_portrait, cv2.COLOR_BGR2RGB)
+                else:
+                    rgb_frame = reference_portrait
+                pil_img = Image.fromarray(rgb_frame.astype(np.uint8))
+                pil_img.save(filename, 'JPEG', quality=95)
+
+            # Check if identity already exists and update, or append new
+            if clean_name in self.known_face_names:
+                idx = self.known_face_names.index(clean_name)
+                self.known_face_encodings[idx] = np.array(composite_embedding, dtype=np.float64)
+            else:
+                self.known_face_names.append(clean_name)
+                self.known_face_encodings.append(np.array(composite_embedding, dtype=np.float64))
+
+            # Persist encrypted encodings and rebuild spatial KD-tree index
+            self.save_encodings()
+            return True
+        except Exception as err:
+            print(f"[ERROR] Failed to enroll composite identity '{name}': {err}")
+            return False
+
     def remove_face(self, name: str) -> bool:
         """
         Safely remove an identity and their reference photos.

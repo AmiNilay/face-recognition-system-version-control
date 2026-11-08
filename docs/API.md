@@ -257,15 +257,64 @@ Remote biometric enrollment endpoint. Validates single face presence, sanitizes 
 }
 ```
 
-#### 4. `GET /api/v1/attendance`
+#### 4. `POST /api/v1/enroll/composite` (JSON)
+Enrolls an identity using a synthesized $L_2$-normalized composite embedding from multiple facial perspectives (Frontal, Turn Left, Turn Right, Tilt Up, Nod Down).
+* **JSON Payload (`POST /api/v1/enroll/composite`):**
+```json
+{
+  "name": "Sarah Connor",
+  "angles": [
+    { "angle": "FRONTAL", "image_base64": "<base64-image>" },
+    { "angle": "TURN_LEFT", "image_base64": "<base64-image>" },
+    { "angle": "TURN_RIGHT", "image_base64": "<base64-image>" }
+  ]
+}
+```
+* **Response (200 OK):**
+```json
+{
+  "success": true,
+  "message": "Identity 'Sarah Connor' enrolled with 3-angle composite Face ID embedding.",
+  "name": "Sarah Connor",
+  "enrolled_at_ist": "2026-11-08 23:20:00 IST",
+  "total_enrolled": 7
+}
+```
+
+#### 5. `GET /api/v1/attendance`
 Retrieves daily attendance logs, absentees, and executive metrics in Indian Standard Time (IST).
 * **Query Parameters:**
   * `date`: Optional date in `YYYY-MM-DD` format (defaults to current date in IST).
   * `format`: Response format: `json` (default), `csv`, or `html`.
 * **Response (200 OK):** Returns structured JSON or downloadable CSV/HTML.
 
-#### 5. `WebSocket /ws/stream`
+#### 6. `WebSocket /ws/stream`
 Low-latency bidirectional WebSocket connection for live camera streams and edge devices.
 * **Client sends:** Binary JPEG bytes OR JSON `{"image_base64": "..."}`
 * **Server returns:** Real-time JSON telemetry with bounding boxes, match confidences, liveness verdicts, and latency.
+
+---
+
+## 11. `CompositeEnrollment` (`src/composite_enrollment.py`)
+
+Multi-angle biometric enrollment engine inspired by Apple Face ID design principles.
+
+### Key Classes & Functions
+
+* `compute_l2_normalized_composite(embeddings: List[np.ndarray]) -> np.ndarray`  
+  Calculates mathematically optimal $L_2$-normalized Fréchet centroid vector:
+  $$\mathbf{e}_{\text{composite}} = \frac{\sum \mathbf{e}_i}{\left\|\sum \mathbf{e}_i\right\|_2}$$
+  Guarantees $\|\mathbf{e}_{\text{composite}}\|_2 = 1.0$.
+
+* `measure_frame_sharpness(bgr_crop: np.ndarray) -> float`  
+  Computes the variance of the Laplacian operator to detect and reject blurry frames during enrollment.
+
+* `CompositeEnrollmentSession(identity_name: str, required_stability_frames=3, min_sharpness=25.0)`  
+  State machine tracking user progression through 5 canonical head poses (`FRONTAL`, `TURN_LEFT`, `TURN_RIGHT`, `TILT_UP`, `NOD_DOWN`).
+  * `process_frame(frame, head_pose, face_encoding, face_crop) -> dict`: Evaluates live head orientation against active angle criteria.
+  * `generate_composite_portrait() -> np.ndarray`: Produces a 3-column reference contact sheet (Left $\rightarrow$ Frontal $\rightarrow$ Right).
+
+* `render_apple_face_id_hud(frame, session, center_xy=None, radius=140) -> np.ndarray`  
+  Draws Apple Face ID circular HUD with 36 radial tick marks that dynamically illuminate from dark gray (`#3a3a3c`) to Apple Mint Green (`#30d158`) as each pose is acquired.
+
 
