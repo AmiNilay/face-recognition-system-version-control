@@ -44,3 +44,10 @@ audio:
   enabled: false                # Offline text-to-speech voice announcements upon face recognition
   cooldown_seconds: 15.0        # Seconds before greeting the same person again
   rate: 170                     # Speech rate (words per minute)
+
+api:
+  host: "127.0.0.1"             # Listening host address
+  port: 8000                    # Listening TCP port
+  cors_origins: ["*"]           # Allowed CORS origins
+  enable_docs: true             # Enable Swagger UI (/docs) and ReDoc (/redoc)
+

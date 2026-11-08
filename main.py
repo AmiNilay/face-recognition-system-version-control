@@ -2,12 +2,13 @@
 Main Application Launcher
 
 Entry point for the Face Recognition System. Provides command-line options
-to start the application in GUI or CLI mode.
+to start the application in GUI, CLI, or Edge API Microservice mode.
 
 Usage Examples:
-    python main.py --gui       # Launch the modern dark-themed GUI dashboard
-    python main.py             # Launch fast command-line / HUD recognition mode
-    python main.py --video 1   # Use secondary USB camera device
+    python main.py --gui               # Launch the modern dark-themed GUI dashboard
+    python main.py --api --port 8000   # Launch FastAPI edge microservice & Swagger UI
+    python main.py                     # Launch fast command-line / HUD recognition mode
+    python main.py --video 1           # Use secondary USB camera device
 """
 
 import sys
@@ -27,6 +28,9 @@ def main():
         description='Real-time Face Recognition System (Indian Standard Time - IST Edition)'
     )
     parser.add_argument('--gui', action='store_true', help='Launch Graphical User Interface (GUI)')
+    parser.add_argument('--api', action='store_true', help='Launch FastAPI Edge Microservice with REST and WebSocket endpoints')
+    parser.add_argument('--host', type=str, default='127.0.0.1', help='API server host address (default: 127.0.0.1)')
+    parser.add_argument('--port', type=int, default=8000, help='API server port (default: 8000)')
     parser.add_argument('--video', type=str, default='0', help='Video source: device index (0) or video file path')
     
     args = parser.parse_args()
@@ -40,7 +44,12 @@ def main():
         print("[ERROR] Dependency verification failed. Please install dependencies from requirements.txt")
         return
 
-    if args.gui:
+    if args.api:
+        # Launch High-Performance FastAPI Edge Microservice
+        print("[INFO] Starting FastAPI Edge Microservice...")
+        from src.api import start_server
+        start_server(host=args.host, port=args.port)
+    elif args.gui:
         # Launch Tkinter Desktop Application
         print("[INFO] Starting Desktop GUI mode...")
         from gui.app import FaceRecognitionGUI

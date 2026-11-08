@@ -165,3 +165,107 @@ Multi-format attendance analytics and executive reporting engine.
 * `generate_daily_summary(target_date=None) -> Dict[str, Any]`: Computes aggregate attendance statistics (total enrolled, present, absent, rate, first seen, last seen, mean confidence).
 * `export_csv(summary, output_path="data/attendance_summary.csv") -> str`: Exports attendance breakdown to a structured CSV file.
 * `export_html(summary, output_path="data/attendance_report.html") -> str`: Generates presentation-grade, Apple-styled executive HTML report with responsive cards and printable CSS.
+
+---
+
+## 10. `FastAPI Edge Microservice` (`src/api.py`)
+
+High-performance, async REST and WebSocket microservice for edge devices, mobile clients, and third-party web dashboard integration.
+
+### Execution
+```bash
+# Start microservice on port 8000
+python main.py --api --port 8000
+
+# Or run the Windows batch launcher
+run_api.bat
+```
+
+* **Interactive Swagger UI:** `http://127.0.0.1:8000/docs`
+* **Interactive ReDoc UI:** `http://127.0.0.1:8000/redoc`
+* **OpenAPI 3.1 JSON Specification:** `http://127.0.0.1:8000/openapi.json`
+
+### Endpoints
+
+#### 1. `GET /api/v1/health`
+Returns service operational status, active computer vision models, anti-spoofing status, and enrolled identity count.
+* **Response (200 OK):**
+```json
+{
+  "status": "healthy",
+  "timestamp_ist": "2026-11-08 23:00:00 IST",
+  "enrolled_count": 5,
+  "enrolled_identities": ["Alice", "Bob", "Charlie"],
+  "detector_model": "hog",
+  "encoding_model": "large",
+  "anti_spoofing_enabled": true,
+  "vector_index_active": true,
+  "system_version": "2.1.0"
+}
+```
+
+#### 2. `POST /api/v1/verify` (JSON) & `POST /api/v1/verify/upload` (Multipart)
+Performs 128-d biometric feature extraction, $O(\log N)$ spatial KD-Tree search, EAR blink liveness, 2D FFT moiré screen replay analysis, and 3D head pose estimation.
+* **JSON Payload (`POST /api/v1/verify`):**
+```json
+{
+  "image_base64": "<base64-encoded-jpeg-or-png>",
+  "auto_log_attendance": true
+}
+```
+* **Multipart Payload (`POST /api/v1/verify/upload`):**
+  * `file`: Image file (JPEG, PNG, WEBP)
+  * `auto_log_attendance`: `true` or `false`
+* **Response (200 OK):**
+```json
+{
+  "success": true,
+  "faces_detected": 1,
+  "timestamp_ist": "2026-11-08 23:00:05 IST",
+  "latency_ms": 18.45,
+  "verifications": [
+    {
+      "name": "Alice",
+      "confidence": 96.8,
+      "box": { "top": 80, "right": 240, "bottom": 280, "left": 80 },
+      "is_live": true,
+      "liveness_status": "Verified Human",
+      "head_pose": { "yaw": 2.1, "pitch": -4.3, "roll": 0.8 },
+      "challenge": null
+    }
+  ]
+}
+```
+
+#### 3. `POST /api/v1/enroll` (JSON) & `POST /api/v1/enroll/upload` (Multipart)
+Remote biometric enrollment endpoint. Validates single face presence, sanitizes name (preventing path traversal), serializes encrypted `.dat` vector representations with Fernet AES, and saves reference portrait to `known_faces/`.
+* **JSON Payload (`POST /api/v1/enroll`):**
+```json
+{
+  "name": "David Miller",
+  "image_base64": "<base64-encoded-portrait>"
+}
+```
+* **Response (200 OK):**
+```json
+{
+  "success": true,
+  "message": "Identity 'David Miller' successfully enrolled into biometric database.",
+  "name": "David Miller",
+  "enrolled_at_ist": "2026-11-08 23:01:00 IST",
+  "total_enrolled": 6
+}
+```
+
+#### 4. `GET /api/v1/attendance`
+Retrieves daily attendance logs, absentees, and executive metrics in Indian Standard Time (IST).
+* **Query Parameters:**
+  * `date`: Optional date in `YYYY-MM-DD` format (defaults to current date in IST).
+  * `format`: Response format: `json` (default), `csv`, or `html`.
+* **Response (200 OK):** Returns structured JSON or downloadable CSV/HTML.
+
+#### 5. `WebSocket /ws/stream`
+Low-latency bidirectional WebSocket connection for live camera streams and edge devices.
+* **Client sends:** Binary JPEG bytes OR JSON `{"image_base64": "..."}`
+* **Server returns:** Real-time JSON telemetry with bounding boxes, match confidences, liveness verdicts, and latency.
+

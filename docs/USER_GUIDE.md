@@ -156,4 +156,29 @@ Generate presentation-grade attendance analytics directly from the GUI or CLI:
 * **CSV Export:**
   * Navigate to **File ➔ Export Recognition History (CSV)** to export raw or summarized attendance spreadsheets.
 
+---
+
+## 10. Edge API Microservice Mode (FastAPI & WebSockets)
+
+The Face Recognition System can run as a headless, network-accessible Edge Microservice for smart security cameras, turnstiles, and cloud dashboards:
+
+### Starting the Server
+```bash
+# Start microservice with default port 8000
+python main.py --api --port 8000
+
+# Or launch via the one-click Windows batch script
+run_api.bat
+```
+
+### Key Capabilities
+* **Interactive Documentation:**
+  * Swagger UI: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
+  * ReDoc UI: [http://127.0.0.1:8000/redoc](http://127.0.0.1:8000/redoc)
+* **REST Biometric Verification:** Send base64 or multipart images to `/api/v1/verify` to receive bounding boxes, match confidence, Euler angles, and anti-spoofing verdicts.
+* **Remote Facial Enrollment:** Send portrait photos to `/api/v1/enroll` to remotely register employees. All biometric vectors are encrypted on disk with Fernet AES keys.
+* **Live Attendance Queries:** Query `/api/v1/attendance` in IST to receive real-time presence rates and attendee/absentee breakdowns in JSON, CSV, or HTML.
+* **Real-time WebSockets:** Connect to `/ws/stream` to stream high-frequency video frames and receive sub-20ms telemetry responses.
+
+
 
