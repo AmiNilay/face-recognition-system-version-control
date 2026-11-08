@@ -9,8 +9,9 @@ This document provides developer reference documentation for the modules in `src
 ```
 src/
 ├── face_recognition_system.py # Primary unified recognition controller
-├── face_detector.py           # Face detection wrappers (HOG / Haar)
+├── face_detector.py           # Face detection wrappers (HOG, YuNet DNN, Haar, CNN)
 ├── face_encoder.py            # 128-dimensional biometric embedding engine
+├── vector_index.py            # O(log N) spatial nearest-neighbor search (cKDTree)
 ├── anti_spoofing.py           # Liveness verification, 3D head pose & challenge-response
 ├── security.py                # Cryptographic storage & path traversal guards
 ├── database_manager.py        # SQLite persistence layer with chained SHA-256 audit log
@@ -30,18 +31,49 @@ Primary controller encapsulating video ingestion, multi-face tracking, and confi
 * `save_encodings(filename="data/face_encodings.dat") -> None`  
   Saves computed face encodings using AES-authenticated Fernet encryption (`SecurityManager.save_encrypted_encodings`).
 * `load_encodings(filename="data/face_encodings.dat") -> bool`  
-  Loads and decrypts cached face encodings.
-* `recognize_face(face_encoding: np.ndarray) -> Tuple[str, float]`  
-  Matches a single 128-d embedding against known embeddings using Euclidean distance.  
-  Returns `(name, confidence_percentage)`.
+  Loads and decrypts cached face encodings, automatically rebuilding the spatial `VectorIndex`.
+* `recognize_face(face_encoding: np.ndarray, tolerance=None) -> Tuple[str, float]`  
+  Matches a single 128-d embedding in $O(\log N)$ time using spatial `VectorIndex`. Returns `(name, confidence_percentage)`.
+* `process_frame(frame: np.ndarray, draw_overlays=True) -> Tuple[np.ndarray, dict]`  
+  Unified end-to-end processing pipeline for a single video frame. Returns the annotated frame and telemetry dictionary.
 * `run_recognition(video_source=0) -> None`  
   Spawns OpenCV capture loop with real-time video window, HUD telemetry, and 3D head pose overlays.
-* `process_frame(frame: np.ndarray) -> Tuple[np.ndarray, dict]`  
-  Processes an individual video frame and returns the annotated frame with telemetry dictionary.
 
 ---
 
-## 2. `AntiSpoofEngine` (`src/anti_spoofing.py`)
+## 2. `VectorIndex` (`src/vector_index.py`)
+
+Accelerated spatial index for 128-dimensional biometric embeddings.
+
+### Methods
+
+* `build(encodings: List[np.ndarray], names: List[str]) -> bool`  
+  Constructs a spatial `cKDTree` binary partition index over enrolled 128-d vectors.
+* `query(query_encoding: np.ndarray, tolerance: float = 0.6) -> Tuple[str, float, float]`  
+  Searches for the closest neighbor in $O(\log N)$ time. Returns `(matched_name, confidence_percentage, distance)`.
+* `clear() -> None`  
+  Resets and empties the index.
+
+---
+
+## 3. `FaceDetector` (`src/face_detector.py`)
+
+Detection engine supporting HOG, YuNet DNN, Haar cascades, and CNN.
+
+### Methods
+
+* `detect_faces(image: np.ndarray) -> List[Tuple[int, int, int, int]]`  
+  Dispatches to configured engine (`hog`, `yunet`, `haar`, `cnn`). Returns bounding box coordinates `[(top, right, bottom, left)]`.
+* `detect_faces_yunet(image: np.ndarray) -> List[Tuple[int, int, int, int]]`  
+  Lightweight 60+ FPS deep learning detection via OpenCV `FaceDetectorYN` ONNX with automatic Haar fallback.
+* `detect_faces_opencv(image: np.ndarray) -> List[Tuple[int, int, int, int]]`  
+  Zero-dependency detection via OpenCV Haar cascade classifier.
+* `extract_face(image: np.ndarray, location: Tuple[int, int, int, int]) -> np.ndarray`  
+  Crops and extracts subregion containing the detected face with boundary clamping.
+
+---
+
+## 4. `AntiSpoofEngine` (`src/anti_spoofing.py`)
 
 Multi-layered biometric anti-spoofing engine providing presentation attack defense.
 
@@ -64,7 +96,7 @@ Multi-layered biometric anti-spoofing engine providing presentation attack defen
 
 ---
 
-## 3. `SecurityManager` (`src/security.py`)
+## 5. `SecurityManager` (`src/security.py`)
 
 Cryptographic storage and input sanitization layer (CWE-502, CWE-22 mitigations).
 
@@ -77,22 +109,7 @@ Cryptographic storage and input sanitization layer (CWE-502, CWE-22 mitigations)
 
 ---
 
-## 4. `FaceDetector` (`src/face_detector.py`)
-
-Dedicated detection abstraction supporting both Dlib HOG and OpenCV Haar Cascade methods.
-
-### Methods
-
-* `detect_faces(image: np.ndarray) -> List[Tuple[int, int, int, int]]`  
-  Detects faces using HOG/CNN. Returns bounding box coordinates `[(top, right, bottom, left)]`.
-* `detect_faces_opencv(image: np.ndarray) -> List[Tuple[int, int, int, int]]`  
-  Ultra-fast detection fallback using OpenCV Haar Cascade.
-* `extract_face(image: np.ndarray, location: Tuple[int, int, int, int]) -> np.ndarray`  
-  Crops and extracts subregion array containing the detected face.
-
----
-
-## 3. `FaceEncoder` (`src/face_encoder.py`)
+## 6. `FaceEncoder` (`src/face_encoder.py`)
 
 Encapsulates 128-dimensional metric learning vector calculations.
 
@@ -100,12 +117,14 @@ Encapsulates 128-dimensional metric learning vector calculations.
 
 * `encode_face(image: np.ndarray, face_location=None) -> Optional[np.ndarray]`  
   Generates 128-d float embedding vector for a single face.
+* `encode_faces(image: np.ndarray, face_locations) -> List[np.ndarray]`  
+  Generates 128-d embedding vectors for multiple detected faces.
 * `compare_faces(known: np.ndarray, unknown: np.ndarray, tolerance=0.6) -> bool`  
   Evaluates Euclidean distance against tolerance threshold.
 
 ---
 
-## 4. `DatabaseManager` (`src/database_manager.py`)
+## 7. `DatabaseManager` (`src/database_manager.py`)
 
 SQLite relational storage manager.
 

@@ -6,9 +6,11 @@ import tempfile
 import os
 import gc
 import re
+from unittest.mock import patch, MagicMock
 from src.face_encoder import FaceEncoder
 from src.face_recognition_system import FaceRecognitionSystem, sanitize_identity_name
 from src.database_manager import DatabaseManager
+from src.vector_index import VectorIndex
 from src.utils import format_ist_timestamp, get_ist_now
 
 class TestFaceRecognition(unittest.TestCase):
@@ -113,6 +115,80 @@ class TestFaceRecognition(unittest.TestCase):
                     os.remove(tmp_db_path)
                 except PermissionError:
                     pass
+
+    def test_vector_index_basic_and_edge_cases(self):
+        """Verify VectorIndex handling of empty indices, invalid shapes, and queries."""
+        v_index = VectorIndex(use_kdtree=True)
+        self.assertEqual(len(v_index), 0)
+
+        # Empty index query returns Unknown
+        name, conf, dist = v_index.query(np.ones(128))
+        self.assertEqual(name, "Unknown")
+        self.assertEqual(conf, 0.0)
+
+        # None query returns Unknown
+        name, conf, dist = v_index.query(None)
+        self.assertEqual(name, "Unknown")
+
+        # Invalid vector length returns Unknown
+        name, conf, dist = v_index.query(np.ones(64))
+        self.assertEqual(name, "Unknown")
+
+    def test_vector_index_kdtree_search_and_linear_equivalence(self):
+        """Verify spatial cKDTree index produces identical matches to linear scan."""
+        np.random.seed(42)
+        mock_encodings = [np.random.rand(128) for _ in range(20)]
+        mock_names = [f"User_{i}" for i in range(20)]
+
+        # 1. Accelerated cKDTree index
+        tree_index = VectorIndex(use_kdtree=True)
+        self.assertTrue(tree_index.build(mock_encodings, mock_names))
+        self.assertEqual(len(tree_index), 20)
+
+        # 2. Linear scan index (use_kdtree=False)
+        linear_index = VectorIndex(use_kdtree=False)
+        linear_index.build(mock_encodings, mock_names)
+
+        # Exact query for User_7
+        exact_query = mock_encodings[7]
+        name_t, conf_t, dist_t = tree_index.query(exact_query)
+        name_l, conf_l, dist_l = linear_index.query(exact_query)
+
+        self.assertEqual(name_t, "User_7")
+        self.assertEqual(name_l, "User_7")
+        self.assertAlmostEqual(conf_t, 100.0, places=2)
+        self.assertAlmostEqual(conf_l, 100.0, places=2)
+        self.assertAlmostEqual(dist_t, 0.0, places=5)
+        self.assertAlmostEqual(dist_l, 0.0, places=5)
+
+        # Noisy query near User_12
+        noisy_query = mock_encodings[12] + np.random.normal(0, 0.02, 128)
+        name_noisy, conf_noisy, dist_noisy = tree_index.query(noisy_query, tolerance=0.6)
+        name_noisy_l, conf_noisy_l, dist_noisy_l = linear_index.query(noisy_query, tolerance=0.6)
+
+        self.assertEqual(name_noisy, "User_12")
+        self.assertEqual(name_noisy, name_noisy_l)
+        self.assertAlmostEqual(dist_noisy, dist_noisy_l, places=4)
+
+    def test_system_process_frame_end_to_end(self):
+        """Verify unified process_frame pipeline produces frame and complete telemetry."""
+        test_frame = np.zeros((240, 320, 3), dtype=np.uint8)
+        # Mock detector to return 1 face location
+        self.system.detector.detect_faces = lambda img: [(10, 80, 80, 10)]
+        # Mock encoder to return 1 mock embedding
+        self.system.encoder.encode_faces = lambda img, locs: [np.random.rand(128)]
+        # Mock landmark extractor
+        with patch("face_recognition.face_landmarks", return_value=[{'left_eye': [(0, 0)]*6, 'right_eye': [(0, 0)]*6}]):
+            annotated_frame, telemetry = self.system.process_frame(test_frame, draw_overlays=True)
+
+        self.assertEqual(annotated_frame.shape, (240, 320, 3))
+        self.assertIn('names', telemetry)
+        self.assertIn('locations', telemetry)
+        self.assertIn('confidences', telemetry)
+        self.assertIn('liveness', telemetry)
+        self.assertIn('num_faces', telemetry)
+        self.assertEqual(telemetry['num_faces'], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

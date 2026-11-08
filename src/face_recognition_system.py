@@ -26,6 +26,7 @@ from src.face_detector import FaceDetector
 from src.face_encoder import FaceEncoder
 from src.anti_spoofing import AntiSpoofEngine, LivenessResult
 from src.security import SecurityManager
+from src.vector_index import VectorIndex
 
 def sanitize_identity_name(name: str) -> str:
     """
@@ -67,6 +68,7 @@ class FaceRecognitionSystem:
         self.encoder = FaceEncoder(encoding_model=self.encoding_model)
         self.anti_spoof = AntiSpoofEngine(self.config)
         self.sec = SecurityManager()
+        self.vector_index = VectorIndex(use_kdtree=True)
 
         # Internal state collections
         self.known_face_encodings: List[np.ndarray] = []
@@ -130,9 +132,10 @@ class FaceRecognitionSystem:
             except Exception as err:
                 print(f"[ERROR] Failed to load {filename}: {err}")
 
-        # Sync modular encoder
+        # Sync modular encoder and vector index
         self.encoder.known_encodings = list(self.known_face_encodings)
         self.encoder.known_names = list(self.known_face_names)
+        self.vector_index.build(self.known_face_encodings, self.known_face_names)
 
         print(f"\n[INFO] Total enrolled identities: {len(self.known_face_names)}")
         return len(self.known_face_names) > 0
@@ -180,6 +183,7 @@ class FaceRecognitionSystem:
                 self.known_face_encodings = encodings
                 self.encoder.known_names = list(self.known_face_names)
                 self.encoder.known_encodings = list(self.known_face_encodings)
+                self.vector_index.build(self.known_face_encodings, self.known_face_names)
                 print(f"[INFO] Loaded {len(self.known_face_names)} identities from encrypted archive: {dat_file}")
                 return True
 
@@ -194,6 +198,7 @@ class FaceRecognitionSystem:
                 self.known_face_encodings = data.get("encodings", [])
                 self.encoder.known_names = list(self.known_face_names)
                 self.encoder.known_encodings = list(self.known_face_encodings)
+                self.vector_index.build(self.known_face_encodings, self.known_face_names)
                 print(f"[SECURITY MIGRATION] Migrating {len(self.known_face_names)} identities from legacy pickle to encrypted storage...")
                 self.save_encodings(dat_file)
                 # Safely archive legacy .pkl
@@ -210,7 +215,8 @@ class FaceRecognitionSystem:
 
     def recognize_face(self, face_encoding: np.ndarray, tolerance: Optional[float] = None) -> Tuple[str, float]:
         """
-        Identify a face encoding by calculating Euclidean distances to all known identities.
+        Identify a face encoding by calculating Euclidean distances to all known identities
+        accelerated via spatial VectorIndex (cKDTree).
 
         Beginner Concept:
         - Euclidean Distance: Measures distance between two vectors.
@@ -225,28 +231,13 @@ class FaceRecognitionSystem:
         Returns:
             tuple[str, float]: (matched_person_name, confidence_percentage).
         """
-        import face_recognition
-
-        name = "Unknown"
-        confidence = 0.0
         tol = self.tolerance if tolerance is None else tolerance
 
-        if self.known_face_encodings:
-            # Compute Euclidean distances against all enrolled identities
-            distances = face_recognition.face_distance(self.known_face_encodings, face_encoding)
-            best_match_idx = int(np.argmin(distances))
-            min_distance = float(distances[best_match_idx])
+        # Keep vector index synchronized if known_face_encodings list was mutated directly
+        if len(self.vector_index) != len(self.known_face_encodings):
+            self.vector_index.build(self.known_face_encodings, self.known_face_names)
 
-            # Convert distance into an intuitive confidence percentage
-            confidence = max(0.0, (1.0 - min_distance)) * 100.0
-
-            # Stricter verification against tolerance
-            if min_distance < tol:
-                name = self.known_face_names[best_match_idx]
-            else:
-                name = "Unknown"
-                confidence = 0.0
-
+        name, confidence, _ = self.vector_index.query(face_encoding, tolerance=tol)
         return name, confidence
 
     def run_recognition(self, video_source=0):
@@ -581,8 +572,84 @@ class FaceRecognitionSystem:
                         print(f"[WARNING] Could not delete image file {cand_path}: {err}")
 
             self.save_encodings()
+            self.vector_index.build(self.known_face_encodings, self.known_face_names)
             return True
         return False
+
+    def process_frame(
+        self,
+        frame: np.ndarray,
+        draw_overlays: bool = True
+    ) -> Tuple[np.ndarray, Dict[str, Any]]:
+        """
+        Unified end-to-end computer vision processing pipeline for a single frame:
+        1. Downscales frame (0.25x) for low-latency inference.
+        2. Locates faces via configured FaceDetector (HOG / YuNet / Haar / CNN).
+        3. Generates 128-dimensional embedding vectors using FaceEncoder.
+        4. Matches identities in O(log N) using spatial VectorIndex (cKDTree).
+        5. Computes multi-modal liveness and 3D head pose via AntiSpoofEngine.
+        6. Renders color-coded bounding boxes, Euler telemetry, and privacy blur.
+
+        Args:
+            frame (np.ndarray): Input video frame (BGR format).
+            draw_overlays (bool): Whether to render visual overlays onto frame.
+
+        Returns:
+            tuple: (processed_frame, telemetry_dict)
+        """
+        if frame is None or frame.size == 0:
+            return frame, {
+                'names': [], 'locations': [], 'confidences': [],
+                'liveness': [], 'poses': [], 'challenges': [],
+                'num_faces': 0, 'num_enrolled': len(self.known_face_names)
+            }
+
+        h_f, w_f = frame.shape[:2]
+        small_frame = cv2.resize(frame, (0, 0), fx=0.25, fy=0.25)
+        rgb_small_frame = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
+
+        self.face_locations = self.detector.detect_faces(rgb_small_frame)
+        self.face_encodings = []
+        self.face_names = []
+        self.face_confidences = []
+        self.face_liveness = []
+
+        if self.face_locations:
+            import face_recognition
+            self.face_encodings = self.encoder.encode_faces(rgb_small_frame, self.face_locations)
+            landmarks_list = face_recognition.face_landmarks(rgb_small_frame, self.face_locations)
+
+            for idx, enc in enumerate(self.face_encodings):
+                name, conf = self.recognize_face(enc)
+                self.face_names.append(name)
+                self.face_confidences.append(conf)
+
+                top_s, right_s, bottom_s, left_s = self.face_locations[idx]
+                y1, y2 = max(0, top_s * 4), min(h_f, bottom_s * 4)
+                x1, x2 = max(0, left_s * 4), min(w_f, right_s * 4)
+                face_crop = frame[y1:y2, x1:x2] if (y2 > y1 and x2 > x1) else None
+
+                lms = landmarks_list[idx] if idx < len(landmarks_list) else None
+                liveness_res = self.anti_spoof.verify_liveness(
+                    name, face_crop, lms, frame_shape=(h_f, w_f), scale=4.0
+                )
+                self.face_liveness.append(liveness_res)
+
+        output_frame = frame.copy() if draw_overlays else frame
+        if draw_overlays:
+            self.draw_results(output_frame)
+
+        telemetry = {
+            'names': list(self.face_names),
+            'locations': list(self.face_locations),
+            'confidences': list(self.face_confidences),
+            'liveness': list(self.face_liveness),
+            'poses': [r.head_pose for r in self.face_liveness],
+            'challenges': [r.challenge_prompt for r in self.face_liveness],
+            'num_faces': len(self.face_locations),
+            'num_enrolled': len(self.known_face_names)
+        }
+        return output_frame, telemetry
 
     def get_known_faces(self) -> List[str]:
         """Return a copy of the list of currently registered identity names."""
